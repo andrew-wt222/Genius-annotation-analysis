@@ -5,12 +5,14 @@ import logging
 import os
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request
 
+import config
 import genius_client
+import mixpanel_client
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,27 +26,26 @@ BASE_DIR = Path(__file__).parent
 MIXPANEL_CACHE = BASE_DIR / "data_cache.json"
 ENRICHED_CACHE = BASE_DIR / "enriched_cache.json"
 
+# Mixpanel JQL / Insights API for live queries
+MIXPANEL_INSIGHTS_URL = "https://mixpanel.com/api/2.0/insights"
+
 _data = {
-    "mixpanel": None,         # raw Mixpanel aggregated data
-    "enriched": {},           # annotation_id -> Genius metadata
-    "enriching": False,       # True while background enrichment runs
+    "mixpanel": None,
+    "enriched": {},
+    "enriching": False,
     "enrich_progress": 0,
     "enrich_total": 0,
 }
 
 
 def _load_mixpanel_cache():
-    """Load the pre-fetched Mixpanel data."""
     if MIXPANEL_CACHE.exists():
         with open(MIXPANEL_CACHE) as f:
             _data["mixpanel"] = json.load(f)
-        logger.info("Loaded Mixpanel cache: %d artists, %d annotations",
-                     len(_data["mixpanel"].get("artists", [])),
-                     len(_data["mixpanel"].get("top_lyrics", [])))
+        logger.info("Loaded Mixpanel cache")
 
 
 def _load_enriched_cache():
-    """Load previously enriched Genius annotation data."""
     if ENRICHED_CACHE.exists():
         with open(ENRICHED_CACHE) as f:
             _data["enriched"] = json.load(f)
@@ -52,28 +53,19 @@ def _load_enriched_cache():
 
 
 def _save_enriched_cache():
-    """Persist enriched data to disk."""
     with open(ENRICHED_CACHE, "w") as f:
         json.dump(_data["enriched"], f, indent=2)
 
 
 def _enrich_annotations_background(annotation_ids, max_fetch=150):
-    """Background thread: fetch Genius annotation details."""
     _data["enriching"] = True
-    _data["enrich_total"] = min(len(annotation_ids), max_fetch)
-    _data["enrich_progress"] = 0
-
-    ids_to_fetch = [
-        aid for aid in annotation_ids[:max_fetch]
-        if aid not in _data["enriched"]
-    ]
+    ids_to_fetch = [aid for aid in annotation_ids[:max_fetch] if aid not in _data["enriched"]]
     _data["enrich_total"] = len(ids_to_fetch)
+    _data["enrich_progress"] = 0
 
     if not ids_to_fetch:
         _data["enriching"] = False
         return
-
-    logger.info("Enriching %d annotations from Genius API...", len(ids_to_fetch))
 
     for i, aid in enumerate(ids_to_fetch):
         try:
@@ -82,31 +74,22 @@ def _enrich_annotations_background(annotation_ids, max_fetch=150):
                 _data["enriched"][aid] = meta
         except Exception as exc:
             logger.warning("Failed to fetch annotation %s: %s", aid, exc)
-
         _data["enrich_progress"] = i + 1
-
-        # Save every 25 annotations
         if (i + 1) % 25 == 0:
             _save_enriched_cache()
-
-        # Rate limit
         if i < len(ids_to_fetch) - 1:
             time.sleep(0.3)
 
     _save_enriched_cache()
     _data["enriching"] = False
-    logger.info("Enrichment complete: %d annotations", len(_data["enriched"]))
 
 
 def _build_response():
-    """Merge Mixpanel data with Genius enrichment."""
     mx = _data["mixpanel"]
     if not mx:
-        return {"error": "No Mixpanel data loaded. Place data_cache.json in the project root."}
+        return {"error": "No data loaded yet."}
 
     enriched = _data["enriched"]
-
-    # Merge enrichment into annotations
     annotations = []
     for a in mx.get("top_lyrics", []):
         aid = a.get("annotation_id", "")
@@ -138,6 +121,127 @@ def _build_response():
     }
 
 
+def _query_mixpanel_artist(artist, days, event_name):
+    """Query Mixpanel Raw Export API for a specific artist and event."""
+    import requests as req
+
+    to_date = datetime.utcnow().date()
+    from_date = to_date - timedelta(days=days)
+
+    params = {
+        "from_date": from_date.isoformat(),
+        "to_date": to_date.isoformat(),
+        "event": json.dumps([event_name]),
+        "where": f'properties["Primary Artist"] == "{artist}"',
+    }
+
+    resp = req.get(
+        config.MIXPANEL_EXPORT_URL,
+        params=params,
+        auth=(config.MIXPANEL_API_SECRET, ""),
+        timeout=120,
+    )
+    resp.raise_for_status()
+
+    events = []
+    for line in resp.text.strip().splitlines():
+        if not line:
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        events.append(ev.get("properties", {}))
+
+    return events
+
+
+def _aggregate_artist_data(artist, days):
+    """Fetch page views and annotation opens for an artist, return dashboard data."""
+    # Fetch page views
+    page_views = _query_mixpanel_artist(artist, days, "song:load")
+
+    # Fetch annotation opens
+    anno_events = _query_mixpanel_artist(artist, days, "song:open_annotation")
+
+    # Aggregate page views by song
+    song_counts = {}
+    geo_counts = {}
+    referrer_counts = {}
+    daily_counts = {}
+    total_views = len(page_views)
+
+    for p in page_views:
+        title = p.get("Title", "Unknown")
+        song_counts[title] = song_counts.get(title, 0) + 1
+
+        country = p.get("mp_country_code", "Unknown")
+        geo_counts[country] = geo_counts.get(country, 0) + 1
+
+        ref = p.get("$referrer") or p.get("$initial_referrer") or "Direct"
+        referrer_counts[ref] = referrer_counts.get(ref, 0) + 1
+
+        ts = p.get("time")
+        if ts:
+            day = datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d")
+            daily_counts[day] = daily_counts.get(day, 0) + 1
+
+    songs = sorted(
+        [{"song_title": t, "open_count": c} for t, c in song_counts.items()],
+        key=lambda x: x["open_count"], reverse=True,
+    )
+    geos = sorted(
+        [{"country": g, "count": c} for g, c in geo_counts.items()],
+        key=lambda x: x["count"], reverse=True,
+    )
+    referrers = sorted(
+        [{"referrer": r, "count": c} for r, c in referrer_counts.items()],
+        key=lambda x: x["count"], reverse=True,
+    )[:20]
+    daily = sorted(daily_counts.items())
+
+    # Aggregate annotation opens
+    anno_by_song = {}
+    anno_by_id = {}
+    for p in anno_events:
+        title = p.get("Title", "Unknown")
+        anno_by_song[title] = anno_by_song.get(title, 0) + 1
+
+        aid = p.get("annotation_id") or p.get("Annotation ID")
+        if aid:
+            aid = str(aid)
+            if aid not in anno_by_id:
+                anno_by_id[aid] = {"annotation_id": aid, "song_title": title, "open_count": 0}
+            anno_by_id[aid]["open_count"] += 1
+
+    annotations = sorted(anno_by_id.values(), key=lambda x: x["open_count"], reverse=True)
+
+    # Enrich annotations with Genius data
+    enriched = _data["enriched"]
+    for a in annotations:
+        genius = enriched.get(a["annotation_id"], {})
+        a["lyric_fragment"] = genius.get("lyric_fragment", "")
+        a["annotation_text"] = genius.get("annotation_text", "")
+        a["song_url"] = genius.get("song_url", "")
+        a["artist_name"] = artist
+
+    return {
+        "error": None,
+        "artist": artist,
+        "days": days,
+        "total_page_views": total_views,
+        "total_annotation_opens": len(anno_events),
+        "unique_songs": len(songs),
+        "unique_annotations": len(annotations),
+        "songs": songs,
+        "annotations": annotations[:100],
+        "geos": geos,
+        "referrers": referrers,
+        "daily": [{"date": d, "views": v} for d, v in daily],
+        "enriched_count": len(enriched),
+    }
+
+
 # --- Routes ---
 
 @app.route("/")
@@ -150,29 +254,41 @@ def api_data():
     return jsonify(_build_response())
 
 
+@app.route("/api/search")
+def api_search():
+    """Live query Mixpanel for a specific artist over a timeframe."""
+    artist = request.args.get("artist", "").strip()
+    days = int(request.args.get("days", 30))
+
+    if not artist:
+        return jsonify({"error": "artist parameter is required"}), 400
+    if days < 1 or days > 365:
+        return jsonify({"error": "days must be between 1 and 365"}), 400
+
+    try:
+        result = _aggregate_artist_data(artist, days)
+        return jsonify(result)
+    except Exception as exc:
+        logger.exception("Search failed for artist=%s days=%d", artist, days)
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/api/enrich", methods=["POST"])
 def api_enrich():
-    """Trigger Genius API enrichment for top annotations."""
     if _data["enriching"]:
-        return jsonify({"status": "already_running",
-                        "progress": _data["enrich_progress"],
-                        "total": _data["enrich_total"]})
+        return jsonify({"status": "already_running"})
 
-    mx = _data["mixpanel"]
-    if not mx:
-        return jsonify({"status": "error", "message": "No Mixpanel data loaded"})
+    body = request.get_json(silent=True) or {}
+    annotation_ids = body.get("annotation_ids", [])
+
+    if not annotation_ids:
+        mx = _data["mixpanel"]
+        if mx:
+            annotation_ids = [a["annotation_id"] for a in mx.get("top_lyrics", []) if a.get("annotation_id")]
 
     count = int(request.args.get("count", 100))
-    annotation_ids = [a["annotation_id"] for a in mx.get("top_lyrics", [])
-                      if a.get("annotation_id")]
-
-    thread = threading.Thread(
-        target=_enrich_annotations_background,
-        args=(annotation_ids, count),
-        daemon=True,
-    )
+    thread = threading.Thread(target=_enrich_annotations_background, args=(annotation_ids, count), daemon=True)
     thread.start()
-
     return jsonify({"status": "started", "total": min(len(annotation_ids), count)})
 
 
@@ -188,23 +304,20 @@ def api_enrich_status():
 
 @app.route("/api/annotation/<annotation_id>")
 def api_annotation_detail(annotation_id):
-    """Fetch a single annotation from Genius on demand."""
     if annotation_id in _data["enriched"]:
         return jsonify(_data["enriched"][annotation_id])
-
     try:
         meta = genius_client.fetch_annotation(annotation_id)
         if meta:
             _data["enriched"][annotation_id] = meta
             _save_enriched_cache()
             return jsonify(meta)
-        return jsonify({"error": "Annotation not found"}), 404
+        return jsonify({"error": "Not found"}), 404
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
 
 # --- Startup ---
-
 _load_mixpanel_cache()
 _load_enriched_cache()
 

@@ -6,433 +6,441 @@
   <title>Genius Annotation Analytics</title>
   <script src="/static/chart.umd.js"></script>
   <style>
-    :root {
-      --yellow: #ffff64; --bg: #121212; --surface: #1e1e1e; --surface2: #2a2a2a;
-      --text: #e0e0e0; --text-muted: #888; --accent: #ffff64;
-      --accent-dim: rgba(255,255,100,0.15); --border: #333;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+    :root { --yellow:#ffff64; --bg:#121212; --surface:#1e1e1e; --surface2:#2a2a2a; --text:#e0e0e0; --text-muted:#888; --accent:#ffff64; --accent-dim:rgba(255,255,100,0.15); --border:#333; --red:#ef5350; --green:#66bb6a; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
 
-    .header { background: var(--surface); border-bottom: 3px solid var(--yellow); padding: 20px 32px; display: flex; align-items: center; justify-content: space-between; }
-    .header h1 { font-size: 24px; font-weight: 700; color: var(--yellow); }
-    .header h1 span { color: var(--text); font-weight: 400; }
-    .header-actions { display: flex; align-items: center; gap: 12px; }
+    .header { background:var(--surface); border-bottom:3px solid var(--yellow); padding:16px 32px; }
+    .header-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+    .header h1 { font-size:22px; font-weight:700; color:var(--yellow); }
+    .header h1 span { color:var(--text); font-weight:400; }
 
-    .btn {
-      border: none; padding: 8px 20px; border-radius: 6px; font-weight: 600;
-      cursor: pointer; font-size: 14px; transition: opacity 0.2s;
-    }
-    .btn:hover { opacity: 0.85; }
-    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn-yellow { background: var(--yellow); color: #000; }
-    .btn-outline { background: transparent; color: var(--yellow); border: 1px solid var(--yellow); }
+    /* Search bar */
+    .search-bar { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    .search-input { background:var(--surface2); border:2px solid var(--border); border-radius:8px; padding:10px 16px; color:var(--text); font-size:16px; width:320px; }
+    .search-input:focus { outline:none; border-color:var(--yellow); }
+    .search-input::placeholder { color:var(--text-muted); }
+    .time-select { background:var(--surface2); border:2px solid var(--border); border-radius:8px; padding:10px 16px; color:var(--text); font-size:14px; cursor:pointer; appearance:none; -webkit-appearance:none; }
+    .time-select:focus { outline:none; border-color:var(--yellow); }
+    .btn { border:none; padding:10px 24px; border-radius:8px; font-weight:600; cursor:pointer; font-size:14px; transition:all 0.2s; }
+    .btn:hover { opacity:0.85; }
+    .btn:disabled { opacity:0.5; cursor:not-allowed; }
+    .btn-yellow { background:var(--yellow); color:#000; }
+    .btn-outline { background:transparent; color:var(--yellow); border:1px solid var(--yellow); }
 
-    .container { max-width: 1440px; margin: 0 auto; padding: 24px; }
+    .container { max-width:1440px; margin:0 auto; padding:24px; }
 
-    .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 16px; margin-bottom: 28px; }
-    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px; text-align: center; }
-    .stat-card .value { font-size: 32px; font-weight: 700; color: var(--yellow); line-height: 1.1; }
-    .stat-card .label { font-size: 12px; color: var(--text-muted); margin-top: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+    /* Mode toggle */
+    .mode-bar { display:flex; gap:12px; margin-bottom:24px; align-items:center; }
+    .mode-btn { background:var(--surface); border:1px solid var(--border); color:var(--text-muted); padding:8px 20px; border-radius:6px; cursor:pointer; font-size:13px; font-weight:600; }
+    .mode-btn.active { background:var(--accent-dim); color:var(--yellow); border-color:var(--yellow); }
 
-    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 28px; }
-    @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+    .stats-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; margin-bottom:24px; }
+    .stat-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; text-align:center; }
+    .stat-card .value { font-size:30px; font-weight:700; color:var(--yellow); line-height:1.1; }
+    .stat-card .label { font-size:11px; color:var(--text-muted); margin-top:5px; text-transform:uppercase; letter-spacing:0.5px; }
 
-    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 24px; }
-    .panel h2 { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: var(--yellow); display: flex; align-items: center; justify-content: space-between; }
-    .panel canvas { max-height: 340px; }
+    .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:24px; }
+    @media (max-width:900px) { .grid-2 { grid-template-columns:1fr; } }
 
-    table { width: 100%; border-collapse: collapse; font-size: 14px; }
-    th { text-align: left; padding: 10px 12px; border-bottom: 2px solid var(--border); color: var(--text-muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer; user-select: none; white-space: nowrap; }
-    th:hover { color: var(--yellow); }
-    td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
-    tr:hover > td { background: var(--accent-dim); }
-    .rank { color: var(--yellow); font-weight: 700; font-size: 16px; }
-    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
-    .badge-count { background: var(--accent-dim); color: var(--yellow); }
-    .badge-verified { background: rgba(76,175,80,0.2); color: #66bb6a; }
+    .panel { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:20px; margin-bottom:20px; }
+    .panel h2 { font-size:15px; font-weight:600; margin-bottom:14px; color:var(--yellow); }
+    .panel canvas { max-height:300px; }
 
-    .search-box { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 14px; color: var(--text); font-size: 14px; width: 280px; }
-    .search-box:focus { outline: none; border-color: var(--yellow); }
-    .search-box::placeholder { color: var(--text-muted); }
-    .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th { text-align:left; padding:8px 10px; border-bottom:2px solid var(--border); color:var(--text-muted); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; cursor:pointer; user-select:none; white-space:nowrap; }
+    th:hover { color:var(--yellow); }
+    td { padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+    tr:hover>td { background:var(--accent-dim); }
+    .rank { color:var(--yellow); font-weight:700; }
+    .badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; }
+    .badge-count { background:var(--accent-dim); color:var(--yellow); }
+    .song-link { color:var(--accent); text-decoration:none; font-size:12px; }
+    .song-link:hover { text-decoration:underline; }
 
-    .song-link { color: var(--accent); text-decoration: none; }
-    .song-link:hover { text-decoration: underline; }
+    .lyric { font-style:italic; color:var(--yellow); font-size:12px; }
+    .anno-text { color:var(--text-muted); font-size:12px; margin-top:4px; }
+    .detail-row td { padding:16px; background:var(--surface2); }
+    .detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    .detail-grid h3 { font-size:12px; color:var(--yellow); text-transform:uppercase; margin-bottom:6px; }
+    .detail-lyric { font-style:italic; color:var(--yellow); font-size:14px; line-height:1.6; padding:10px; background:rgba(255,255,100,0.05); border-left:3px solid var(--yellow); border-radius:4px; }
+    .detail-anno { font-size:13px; line-height:1.6; color:var(--text); }
 
-    /* Lyric fragment styling */
-    .lyric { font-style: italic; color: var(--yellow); font-size: 13px; line-height: 1.5; }
-    .annotation-body { color: var(--text-muted); font-size: 13px; line-height: 1.5; margin-top: 6px; }
-    .expand-cell { max-width: 400px; }
+    .search-box { background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:7px 12px; color:var(--text); font-size:13px; width:260px; }
+    .search-box:focus { outline:none; border-color:var(--yellow); }
+    .search-box::placeholder { color:var(--text-muted); }
 
-    /* Expandable row */
-    .expand-toggle { cursor: pointer; color: var(--yellow); font-size: 12px; white-space: nowrap; }
-    .expand-toggle:hover { text-decoration: underline; }
-    .detail-row td { padding: 16px 20px; background: var(--surface2); border-bottom: 2px solid var(--border); }
-    .detail-content { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-    .detail-content h3 { font-size: 13px; color: var(--yellow); text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px; }
-    .detail-lyric { font-style: italic; color: var(--yellow); font-size: 15px; line-height: 1.6; padding: 12px; background: rgba(255,255,100,0.05); border-radius: 6px; border-left: 3px solid var(--yellow); }
-    .detail-annotation { color: var(--text); font-size: 14px; line-height: 1.6; }
-    .detail-meta { margin-top: 12px; font-size: 12px; color: var(--text-muted); }
+    .loading { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; z-index:1000; }
+    .spinner { width:48px; height:48px; border:4px solid var(--border); border-top-color:var(--yellow); border-radius:50%; animation:spin 0.8s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    .hidden { display:none; }
+    .error-banner { background:rgba(244,67,54,0.15); border:1px solid rgba(244,67,54,0.4); color:var(--red); padding:12px 20px; border-radius:8px; margin-bottom:20px; }
+    .info-banner { background:var(--accent-dim); border:1px solid var(--yellow); color:var(--yellow); padding:14px 20px; border-radius:8px; margin-bottom:20px; font-size:14px; text-align:center; }
+    .enrich-bar { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:12px 20px; margin-bottom:20px; display:flex; align-items:center; gap:14px; }
+    .progress-track { flex:1; height:6px; background:var(--surface2); border-radius:3px; overflow:hidden; }
+    .progress-fill { height:100%; background:var(--yellow); border-radius:3px; transition:width 0.3s; }
 
-    /* Enrich bar */
-    .enrich-bar { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px 20px; margin-bottom: 20px; display: flex; align-items: center; gap: 16px; }
-    .enrich-bar .progress-track { flex: 1; height: 8px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
-    .enrich-bar .progress-fill { height: 100%; background: var(--yellow); border-radius: 4px; transition: width 0.3s; }
-    .enrich-bar .enrich-text { font-size: 13px; color: var(--text-muted); white-space: nowrap; }
-
-    .loading-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-    .spinner { width: 48px; height: 48px; border: 4px solid var(--border); border-top-color: var(--yellow); border-radius: 50%; animation: spin 0.8s linear infinite; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .loading-text { color: var(--text); margin-top: 16px; font-size: 14px; }
-    .hidden { display: none; }
-    .error-banner { background: rgba(244,67,54,0.15); border: 1px solid rgba(244,67,54,0.4); color: #ef5350; padding: 12px 20px; border-radius: 8px; margin-bottom: 20px; }
-    .tab-bar { display: flex; gap: 0; }
-    .tab-btn { background: var(--surface2); color: var(--text-muted); border: 1px solid var(--border); border-bottom: none; padding: 10px 24px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 8px 8px 0 0; margin-right: -1px; }
-    .tab-btn.active { background: var(--surface); color: var(--yellow); }
-    .tab-content { display: none; }
-    .tab-content.active { display: block; }
-    .tab-body { border: 1px solid var(--border); border-top: none; border-radius: 0 0 10px 10px; padding: 20px; }
-    @media (max-width: 700px) { .detail-content { grid-template-columns: 1fr; } .search-box { width: 100%; } }
+    @media (max-width:700px) { .detail-grid { grid-template-columns:1fr; } .search-input { width:100%; } .search-bar { flex-direction:column; align-items:stretch; } }
   </style>
 </head>
 <body>
 
-<div class="loading-overlay" id="loadingOverlay">
+<div class="loading hidden" id="loading">
   <div style="text-align:center">
     <div class="spinner"></div>
-    <div class="loading-text">Loading annotation data...</div>
+    <div style="color:var(--text);margin-top:16px;font-size:14px" id="loadingText">Loading...</div>
   </div>
 </div>
 
 <header class="header">
-  <h1>Genius <span>Annotation Analytics</span></h1>
-  <div class="header-actions">
-    <button class="btn btn-outline" id="enrichBtn" onclick="startEnrich()">Fetch Lyrics &amp; Annotations from Genius</button>
+  <div class="header-top">
+    <h1>Genius <span>Annotation Analytics</span></h1>
+  </div>
+  <div class="search-bar">
+    <input type="text" class="search-input" id="artistInput" placeholder="Search any artist (e.g. Kanye West, The Holy Knives)..." autofocus>
+    <select class="time-select" id="timeSelect">
+      <option value="7">Last 7 days</option>
+      <option value="30" selected>Last 30 days</option>
+      <option value="90">Last 90 days</option>
+      <option value="180">Last 6 months</option>
+      <option value="365">Last 12 months</option>
+    </select>
+    <button class="btn btn-yellow" id="searchBtn" onclick="doSearch()">Search</button>
+    <button class="btn btn-outline" id="globalBtn" onclick="showGlobal()">Show Global Top</button>
   </div>
 </header>
 
 <div class="container">
   <div id="errorBanner" class="error-banner hidden"></div>
-
-  <!-- Enrich progress bar -->
-  <div class="enrich-bar hidden" id="enrichBar">
-    <span class="enrich-text" id="enrichText">Fetching annotation details...</span>
+  <div id="enrichBar" class="enrich-bar hidden">
+    <span style="font-size:13px;color:var(--text-muted)" id="enrichText">Fetching lyrics...</span>
     <div class="progress-track"><div class="progress-fill" id="enrichFill" style="width:0%"></div></div>
-    <span class="enrich-text" id="enrichCount">0/0</span>
+    <span style="font-size:13px;color:var(--text-muted)" id="enrichCount">0/0</span>
   </div>
 
-  <!-- Stats -->
-  <div class="stats-row">
-    <div class="stat-card"><div class="value" id="statTotal">-</div><div class="label">Annotation Opens (30d)</div></div>
-    <div class="stat-card"><div class="value" id="statAnnotations">-</div><div class="label">Unique Annotations</div></div>
-    <div class="stat-card"><div class="value" id="statSongs">-</div><div class="label">Songs</div></div>
-    <div class="stat-card"><div class="value" id="statArtists">-</div><div class="label">Artists</div></div>
-    <div class="stat-card"><div class="value" id="statEnriched">-</div><div class="label">Lyrics Fetched</div></div>
-  </div>
+  <!-- Artist search result view -->
+  <div id="artistView" class="hidden">
+    <div id="artistHeader" class="info-banner"></div>
 
-  <!-- Charts -->
-  <div class="grid-2">
-    <div class="panel" style="margin-bottom:0"><h2>Top Artists by Annotation Opens</h2><canvas id="artistChart"></canvas></div>
-    <div class="panel" style="margin-bottom:0"><h2>Top Songs by Annotation Opens</h2><canvas id="songChart"></canvas></div>
-  </div>
+    <div class="stats-row" id="artistStats"></div>
 
-  <!-- Artists -->
-  <div class="panel">
-    <h2>Artists Leaderboard</h2>
-    <div class="toolbar"><input type="text" class="search-box" id="artistSearch" placeholder="Search artists..."></div>
-    <div class="table-wrapper">
-      <table><thead><tr>
-        <th>#</th><th data-sort="artist_name" data-tbl="artist">Artist</th><th data-sort="total_opens" data-tbl="artist">Total Opens</th><th data-sort="annotation_count" data-tbl="artist">Annotations</th><th>Top Song</th>
-      </tr></thead><tbody id="artistBody"></tbody></table>
+    <div class="grid-2">
+      <div class="panel"><h2>Page Views Over Time</h2><canvas id="trendChart"></canvas></div>
+      <div class="panel"><h2>Top Songs</h2><canvas id="songsChart"></canvas></div>
     </div>
-  </div>
-
-  <!-- Annotations & Songs tabs -->
-  <div class="panel">
-    <div class="tab-bar">
-      <button class="tab-btn active" id="tabBtnAnno" onclick="switchTab('anno')">Top Annotations &amp; Lyrics</button>
-      <button class="tab-btn" id="tabBtnSong" onclick="switchTab('song')">Top Songs</button>
-    </div>
-    <div class="tab-content active tab-body" id="tab-anno">
-      <div class="toolbar"><input type="text" class="search-box" id="annoSearch" placeholder="Search lyrics, songs, artists, or annotation text..."></div>
-      <div class="table-wrapper">
-        <table><thead><tr>
-          <th>#</th><th data-sort="song_title" data-tbl="anno">Song</th><th data-sort="artist_name" data-tbl="anno">Artist</th><th>Lyrics / Annotation</th><th data-sort="open_count" data-tbl="anno">Opens</th><th>Link</th>
-        </tr></thead><tbody id="annoBody"></tbody></table>
+    <div class="grid-2">
+      <div class="panel"><h2>Geography</h2><canvas id="geoChart"></canvas></div>
+      <div class="panel"><h2>Top Referrers</h2>
+        <table><thead><tr><th>#</th><th>Referrer</th><th>Views</th></tr></thead><tbody id="refBody"></tbody></table>
       </div>
     </div>
-    <div class="tab-content tab-body" id="tab-song">
-      <div class="toolbar"><input type="text" class="search-box" id="songSearch" placeholder="Search songs or artists..."></div>
-      <div class="table-wrapper">
-        <table><thead><tr>
-          <th>#</th><th data-sort="song_title" data-tbl="song">Song</th><th data-sort="artist_name" data-tbl="song">Artist</th><th data-sort="open_count" data-tbl="song">Opens</th>
-        </tr></thead><tbody id="songBody"></tbody></table>
-      </div>
+
+    <!-- Songs table -->
+    <div class="panel">
+      <h2>Songs</h2>
+      <table><thead><tr><th>#</th><th>Song</th><th>Page Views</th></tr></thead><tbody id="artistSongBody"></tbody></table>
+    </div>
+
+    <!-- Annotations -->
+    <div class="panel" id="annoPanel">
+      <h2>Annotation Opens <button class="btn btn-outline" style="font-size:12px;padding:4px 12px;margin-left:12px" onclick="enrichArtistAnnotations()">Fetch Lyrics from Genius</button></h2>
+      <table><thead><tr><th>#</th><th>Annotation ID</th><th>Song</th><th>Opens</th><th>Lyrics / Annotation</th><th>Link</th></tr></thead><tbody id="artistAnnoBody"></tbody></table>
+    </div>
+  </div>
+
+  <!-- Global view -->
+  <div id="globalView">
+    <div class="stats-row" id="globalStats"></div>
+    <div class="grid-2">
+      <div class="panel"><h2>Top Artists by Annotation Opens</h2><canvas id="globalArtistChart"></canvas></div>
+      <div class="panel"><h2>Top Songs by Annotation Opens</h2><canvas id="globalSongChart"></canvas></div>
+    </div>
+
+    <div class="panel">
+      <h2>Artists Leaderboard</h2>
+      <div style="margin-bottom:12px"><input type="text" class="search-box" id="globalArtistSearch" placeholder="Filter artists..."></div>
+      <table><thead><tr><th>#</th><th>Artist</th><th>Total Opens</th><th>Annotations</th><th>Top Song</th></tr></thead><tbody id="globalArtistBody"></tbody></table>
+    </div>
+
+    <div class="panel">
+      <h2>Top Annotations</h2>
+      <div style="margin-bottom:12px"><input type="text" class="search-box" id="globalAnnoSearch" placeholder="Search annotations..."></div>
+      <table><thead><tr><th>#</th><th>Song</th><th>Artist</th><th>Lyrics / Annotation</th><th>Opens</th><th>Link</th></tr></thead><tbody id="globalAnnoBody"></tbody></table>
     </div>
   </div>
 </div>
 
 <script>
-let D = null;
+let GD = null; // global data
+let AD = null; // artist data
+let charts = {};
 let expandedRows = new Set();
 const COLORS = ['#ffff64','#ff6384','#36a2eb','#ff9f40','#4bc0c0','#9966ff','#ff6633','#66bb6a','#ab47bc','#26c6da','#ef5350','#7e57c2','#ffa726','#42a5f5','#ec407a'];
 
-function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-function switchTab(t) {
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-  document.getElementById('tab-' + t).classList.add('active');
-  document.getElementById('tabBtn' + t.charAt(0).toUpperCase() + t.slice(1)).classList.add('active');
-}
-function showError(m) { const e = document.getElementById('errorBanner'); e.textContent = m; e.classList.remove('hidden'); }
+function esc(s) { if (!s) return ''; const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+function showError(m) { document.getElementById('errorBanner').textContent=m; document.getElementById('errorBanner').classList.remove('hidden'); }
 function hideError() { document.getElementById('errorBanner').classList.add('hidden'); }
+function showLoading(msg) { document.getElementById('loadingText').textContent=msg||'Loading...'; document.getElementById('loading').classList.remove('hidden'); }
+function hideLoading() { document.getElementById('loading').classList.add('hidden'); }
+function destroyChart(id) { if(charts[id]){charts[id].destroy();delete charts[id];} }
 
-async function loadData() {
-  document.getElementById('loadingOverlay').classList.remove('hidden');
+// --- Enter key triggers search ---
+document.getElementById('artistInput').addEventListener('keydown', e => { if(e.key==='Enter') doSearch(); });
+
+// --- Artist Search ---
+async function doSearch() {
+  const artist = document.getElementById('artistInput').value.trim();
+  const days = document.getElementById('timeSelect').value;
+  if (!artist) return;
+
+  hideError();
+  showLoading(`Searching Mixpanel for "${artist}" (last ${days} days)...`);
+
   try {
-    const r = await fetch('/api/data');
-    D = await r.json();
-    if (D.error) showError(D.error); else hideError();
-    render();
-  } catch(e) { showError('Failed to load: ' + e.message); }
-  document.getElementById('loadingOverlay').classList.add('hidden');
+    const r = await fetch(`/api/search?artist=${encodeURIComponent(artist)}&days=${days}`);
+    AD = await r.json();
+    if (AD.error) { showError(AD.error); hideLoading(); return; }
+    hideError();
+    document.getElementById('globalView').classList.add('hidden');
+    document.getElementById('artistView').classList.remove('hidden');
+    renderArtistView();
+  } catch(e) { showError('Search failed: '+e.message); }
+  hideLoading();
 }
 
-function render() {
+function renderArtistView() {
+  const d = AD;
+  document.getElementById('artistHeader').innerHTML = `<strong>${esc(d.artist)}</strong> &mdash; last ${d.days} days`;
+
   // Stats
-  document.getElementById('statTotal').textContent = (D.total_events||0).toLocaleString();
-  document.getElementById('statAnnotations').textContent = (D.unique_annotations||0).toLocaleString();
-  document.getElementById('statSongs').textContent = (D.unique_songs||(D.songs||[]).length||0).toLocaleString();
-  document.getElementById('statArtists').textContent = (D.artists||[]).length.toLocaleString();
-  document.getElementById('statEnriched').textContent = (D.enriched_count||0).toLocaleString();
+  document.getElementById('artistStats').innerHTML = `
+    <div class="stat-card"><div class="value">${(d.total_page_views||0).toLocaleString()}</div><div class="label">Page Views</div></div>
+    <div class="stat-card"><div class="value">${(d.total_annotation_opens||0).toLocaleString()}</div><div class="label">Annotation Opens</div></div>
+    <div class="stat-card"><div class="value">${(d.unique_songs||0).toLocaleString()}</div><div class="label">Songs</div></div>
+    <div class="stat-card"><div class="value">${(d.unique_annotations||0).toLocaleString()}</div><div class="label">Unique Annotations</div></div>
+    <div class="stat-card"><div class="value">${(d.geos||[]).length}</div><div class="label">Countries</div></div>
+  `;
 
-  // Update enrich button
-  const btn = document.getElementById('enrichBtn');
-  if (D.enriched_count > 0) btn.textContent = `Fetch More Lyrics (${D.enriched_count} loaded)`;
+  // Trend chart
+  destroyChart('trend');
+  if ((d.daily||[]).length > 0) {
+    charts.trend = new Chart(document.getElementById('trendChart'), {
+      type:'line', data:{ labels:d.daily.map(x=>x.date), datasets:[{label:'Page Views',data:d.daily.map(x=>x.views),borderColor:'#ffff64',backgroundColor:'rgba(255,255,100,0.1)',fill:true,tension:0.3,pointRadius:2}] },
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{ticks:{color:'#888',maxTicksLimit:10},grid:{color:'rgba(255,255,255,0.05)'}},y:{ticks:{color:'#888'},grid:{color:'rgba(255,255,255,0.05)'},beginAtZero:true}} }
+    });
+  }
 
-  renderCharts();
-  renderArtists(D.artists || []);
-  renderAnnotations(D.annotations || []);
-  renderSongs(D.songs || []);
-}
+  // Songs chart
+  destroyChart('songs');
+  const topSongs = (d.songs||[]).slice(0,8);
+  if (topSongs.length) {
+    charts.songs = new Chart(document.getElementById('songsChart'), {
+      type:'bar', data:{ labels:topSongs.map(s=>s.song_title.length>25?s.song_title.slice(0,25)+'...':s.song_title), datasets:[{data:topSongs.map(s=>s.open_count),backgroundColor:COLORS,borderRadius:4}] },
+      options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{ticks:{color:'#888'},grid:{color:'rgba(255,255,255,0.05)'}},y:{ticks:{color:'#e0e0e0',font:{size:11}},grid:{display:false}}} }
+    });
+  }
 
-let chart1, chart2;
-function renderCharts() {
-  const a = (D.artists||[]).slice(0,12);
-  if (chart1) chart1.destroy();
-  chart1 = new Chart(document.getElementById('artistChart'), {
-    type:'bar', data:{ labels:a.map(x=>x.artist_name), datasets:[{data:a.map(x=>x.total_opens), backgroundColor:COLORS, borderRadius:4}] },
-    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
-      scales:{ x:{ticks:{color:'#888'},grid:{color:'rgba(255,255,255,0.05)'}}, y:{ticks:{color:'#e0e0e0',font:{size:11}},grid:{display:false}} } }
+  // Geo chart
+  destroyChart('geo');
+  const topGeo = (d.geos||[]).slice(0,10);
+  if (topGeo.length) {
+    charts.geo = new Chart(document.getElementById('geoChart'), {
+      type:'doughnut', data:{ labels:topGeo.map(g=>g.country), datasets:[{data:topGeo.map(g=>g.count),backgroundColor:COLORS,borderWidth:0}] },
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'right',labels:{color:'#e0e0e0',font:{size:10},padding:6}}} }
+    });
+  }
+
+  // Referrers table
+  const rb = document.getElementById('refBody'); rb.innerHTML='';
+  (d.referrers||[]).forEach((r,i) => {
+    const tr=document.createElement('tr');
+    const ref = r.referrer.length>60 ? r.referrer.slice(0,60)+'...' : r.referrer;
+    tr.innerHTML=`<td class="rank">${i+1}</td><td style="font-size:12px">${esc(ref)}</td><td><span class="badge badge-count">${r.count}</span></td>`;
+    rb.appendChild(tr);
   });
 
-  const s = (D.songs||[]).slice(0,10);
-  if (chart2) chart2.destroy();
-  chart2 = new Chart(document.getElementById('songChart'), {
-    type:'doughnut', data:{ labels:s.map(x=>{const l=x.song_title+' - '+x.artist_name; return l.length>32?l.slice(0,32)+'...':l;}),
-      datasets:[{data:s.map(x=>x.open_count), backgroundColor:COLORS, borderWidth:0}] },
-    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'right',labels:{color:'#e0e0e0',font:{size:10},padding:6}}} }
+  // Songs table
+  const sb = document.getElementById('artistSongBody'); sb.innerHTML='';
+  (d.songs||[]).forEach((s,i) => {
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td class="rank">${i+1}</td><td><strong>${esc(s.song_title)}</strong></td><td><span class="badge badge-count">${s.open_count.toLocaleString()}</span></td>`;
+    sb.appendChild(tr);
   });
+
+  // Annotations
+  renderArtistAnnotations(d.annotations||[]);
+
+  // Show/hide anno panel
+  document.getElementById('annoPanel').style.display = (d.total_annotation_opens > 0 || (d.annotations||[]).length > 0) ? 'block' : 'none';
 }
 
-// --- Artists ---
-function renderArtists(arr) {
-  const tb = document.getElementById('artistBody'); tb.innerHTML = '';
-  arr.forEach((a, i) => {
+function renderArtistAnnotations(arr) {
+  const tb = document.getElementById('artistAnnoBody'); tb.innerHTML='';
+  if (!arr.length) { tb.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px">No annotation opens found for this artist in this timeframe</td></tr>'; return; }
+  arr.forEach((a,i) => {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td class="rank">${i+1}</td><td><strong>${esc(a.artist_name)}</strong></td><td><span class="badge badge-count">${a.total_opens.toLocaleString()}</span></td><td>${a.annotation_count}</td><td>${esc(a.top_song)}</td>`;
-    tb.appendChild(tr);
-  });
-}
-document.getElementById('artistSearch').addEventListener('input', function() {
-  const q = this.value.toLowerCase();
-  renderArtists((D.artists||[]).filter(a => a.artist_name.toLowerCase().includes(q)));
-});
-
-// --- Annotations (the main table) ---
-function renderAnnotations(arr) {
-  const tb = document.getElementById('annoBody'); tb.innerHTML = '';
-  arr.forEach((a, i) => {
+    tr.style.cursor='pointer';
     const aid = a.annotation_id;
+    tr.onclick = () => toggleArtistAnno(aid);
     const hasLyric = !!a.lyric_fragment;
-    const hasAnno = !!a.annotation_text;
-    const isExpanded = expandedRows.has(aid);
-
-    // Main row
-    const tr = document.createElement('tr');
-    tr.style.cursor = 'pointer';
-    tr.onclick = () => toggleDetail(aid);
-
-    let lyricCol = '';
-    if (hasLyric) {
-      const frag = a.lyric_fragment.length > 80 ? a.lyric_fragment.slice(0, 80) + '...' : a.lyric_fragment;
-      lyricCol = `<span class="lyric">"${esc(frag)}"</span>`;
-      if (hasAnno) {
-        const snip = a.annotation_text.length > 60 ? a.annotation_text.slice(0, 60) + '...' : a.annotation_text;
-        lyricCol += `<div class="annotation-body">${esc(snip)}</div>`;
-      }
-    } else {
-      lyricCol = `<span class="expand-toggle">Click to fetch</span>`;
-    }
-
+    let lyricCol = hasLyric
+      ? `<span class="lyric">"${esc(a.lyric_fragment.length>80?a.lyric_fragment.slice(0,80)+'...':a.lyric_fragment)}"</span>${a.annotation_text?'<div class="anno-text">'+esc(a.annotation_text.slice(0,60))+'...</div>':''}`
+      : '<span style="color:var(--text-muted);font-size:12px">Click to fetch</span>';
     const link = a.song_url ? `<a class="song-link" href="${esc(a.song_url)}" target="_blank" onclick="event.stopPropagation()">View</a>` : '';
-    const verified = a.verified ? ' <span class="badge badge-verified">IQ</span>' : '';
-
-    tr.innerHTML = `<td class="rank">${i+1}</td><td><strong>${esc(a.song_title)}</strong></td><td>${esc(a.artist_name)}</td><td class="expand-cell">${lyricCol}</td><td><span class="badge badge-count">${a.open_count.toLocaleString()}</span>${verified}</td><td>${link}</td>`;
+    tr.innerHTML=`<td class="rank">${i+1}</td><td style="font-family:monospace;font-size:11px">${esc(aid)}</td><td><strong>${esc(a.song_title)}</strong></td><td><span class="badge badge-count">${a.open_count.toLocaleString()}</span></td><td style="max-width:350px">${lyricCol}</td><td>${link}</td>`;
     tb.appendChild(tr);
 
-    // Detail row (expanded)
-    if (isExpanded && (hasLyric || hasAnno)) {
-      const dr = document.createElement('tr');
-      dr.className = 'detail-row';
-      dr.innerHTML = `<td colspan="6">
-        <div class="detail-content">
-          <div>
-            <h3>Annotated Lyrics</h3>
-            <div class="detail-lyric">${esc(a.lyric_fragment) || 'No lyrics available'}</div>
-            <div class="detail-meta">Song: ${esc(a.genius_song_title || a.song_title)} &middot; Artist: ${esc(a.genius_artist || a.artist_name)}${a.votes_total ? ' &middot; Votes: ' + a.votes_total : ''}</div>
-          </div>
-          <div>
-            <h3>Annotation</h3>
-            <div class="detail-annotation">${esc(a.annotation_text) || 'No annotation text available'}</div>
-          </div>
-        </div>
-      </td>`;
+    if (expandedRows.has(aid) && hasLyric) {
+      const dr=document.createElement('tr'); dr.className='detail-row';
+      dr.innerHTML=`<td colspan="6"><div class="detail-grid"><div><h3>Annotated Lyrics</h3><div class="detail-lyric">${esc(a.lyric_fragment)||'N/A'}</div></div><div><h3>Annotation</h3><div class="detail-anno">${esc(a.annotation_text)||'N/A'}</div></div></div></td>`;
       tb.appendChild(dr);
     }
   });
 }
 
-async function toggleDetail(aid) {
-  if (expandedRows.has(aid)) {
-    expandedRows.delete(aid);
-    renderAnnotations(D.annotations || []);
-    return;
-  }
-
-  // Check if we already have the data
-  const anno = (D.annotations || []).find(a => a.annotation_id === aid);
-  if (anno && anno.lyric_fragment) {
-    expandedRows.add(aid);
-    renderAnnotations(D.annotations || []);
-    return;
-  }
-
-  // Fetch from Genius on demand
+async function toggleArtistAnno(aid) {
+  if (expandedRows.has(aid)) { expandedRows.delete(aid); renderArtistAnnotations(AD.annotations||[]); return; }
+  const anno = (AD.annotations||[]).find(a=>a.annotation_id===aid);
+  if (anno && anno.lyric_fragment) { expandedRows.add(aid); renderArtistAnnotations(AD.annotations||[]); return; }
   if (!aid) return;
   try {
-    const r = await fetch('/api/annotation/' + aid);
+    const r = await fetch('/api/annotation/'+aid);
     const data = await r.json();
-    if (data.lyric_fragment || data.annotation_text) {
-      // Merge into our data
-      const idx = (D.annotations || []).findIndex(a => a.annotation_id === aid);
-      if (idx >= 0) {
-        D.annotations[idx].lyric_fragment = data.lyric_fragment || '';
-        D.annotations[idx].annotation_text = data.annotation_text || '';
-        D.annotations[idx].song_url = data.song_url || D.annotations[idx].song_url;
-        D.annotations[idx].votes_total = data.votes_total || 0;
-        D.annotations[idx].verified = data.verified || false;
-        D.annotations[idx].genius_song_title = data.song_title || '';
-        D.annotations[idx].genius_artist = data.artist_name || '';
-      }
+    if (data.lyric_fragment||data.annotation_text) {
+      const idx = (AD.annotations||[]).findIndex(a=>a.annotation_id===aid);
+      if (idx>=0) { Object.assign(AD.annotations[idx], {lyric_fragment:data.lyric_fragment||'',annotation_text:data.annotation_text||'',song_url:data.song_url||AD.annotations[idx].song_url}); }
       expandedRows.add(aid);
-      D.enriched_count = (D.enriched_count || 0) + 1;
-      document.getElementById('statEnriched').textContent = D.enriched_count.toLocaleString();
     }
-  } catch(e) { console.error('Failed to fetch annotation', e); }
-  renderAnnotations(D.annotations || []);
+  } catch(e) { console.error(e); }
+  renderArtistAnnotations(AD.annotations||[]);
 }
 
-document.getElementById('annoSearch').addEventListener('input', function() {
-  const q = this.value.toLowerCase();
-  renderAnnotations((D.annotations||[]).filter(a =>
-    a.song_title.toLowerCase().includes(q) ||
-    a.artist_name.toLowerCase().includes(q) ||
-    (a.lyric_fragment||'').toLowerCase().includes(q) ||
-    (a.annotation_text||'').toLowerCase().includes(q) ||
-    (a.annotation_id||'').includes(q)
-  ));
-});
-
-// --- Songs ---
-function renderSongs(arr) {
-  const tb = document.getElementById('songBody'); tb.innerHTML = '';
-  arr.forEach((s, i) => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td class="rank">${i+1}</td><td><strong>${esc(s.song_title)}</strong></td><td>${esc(s.artist_name)}</td><td><span class="badge badge-count">${s.open_count.toLocaleString()}</span></td>`;
-    tb.appendChild(tr);
-  });
-}
-document.getElementById('songSearch').addEventListener('input', function() {
-  const q = this.value.toLowerCase();
-  renderSongs((D.songs||[]).filter(s => s.song_title.toLowerCase().includes(q) || s.artist_name.toLowerCase().includes(q)));
-});
-
-// --- Sorting ---
-function sortArr(arr, col, asc) {
-  return [...arr].sort((a, b) => {
-    const va = a[col], vb = b[col];
-    if (typeof va === 'number') return asc ? va - vb : vb - va;
-    return asc ? String(va||'').localeCompare(String(vb||'')) : String(vb||'').localeCompare(String(va||''));
-  });
-}
-const ss = {};
-document.querySelectorAll('th[data-sort]').forEach(th => {
-  th.addEventListener('click', () => {
-    const col = th.dataset.sort, tbl = th.dataset.tbl, k = tbl+'_'+col;
-    ss[k] = !ss[k];
-    if (tbl === 'artist') renderArtists(sortArr(D.artists||[], col, ss[k]));
-    else if (tbl === 'anno') renderAnnotations(sortArr(D.annotations||[], col, ss[k]));
-    else if (tbl === 'song') renderSongs(sortArr(D.songs||[], col, ss[k]));
-  });
-});
-
-// --- Bulk enrich ---
-async function startEnrich() {
-  const btn = document.getElementById('enrichBtn');
-  btn.disabled = true;
-  btn.textContent = 'Fetching...';
-
+async function enrichArtistAnnotations() {
+  const ids = (AD.annotations||[]).map(a=>a.annotation_id).filter(Boolean);
+  if (!ids.length) return;
   try {
-    await fetch('/api/enrich?count=100', { method: 'POST' });
+    await fetch('/api/enrich?count='+ids.length, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({annotation_ids:ids})});
     document.getElementById('enrichBar').classList.remove('hidden');
-    pollEnrich();
-  } catch(e) {
-    showError('Failed to start enrichment: ' + e.message);
-    btn.disabled = false;
-  }
+    pollEnrich(true);
+  } catch(e) { showError(e.message); }
 }
 
-async function pollEnrich() {
+async function pollEnrich(reloadArtist) {
   try {
     const r = await fetch('/api/enrich/status');
     const s = await r.json();
-
-    const pct = s.total > 0 ? Math.round((s.progress / s.total) * 100) : 0;
-    document.getElementById('enrichFill').style.width = pct + '%';
-    document.getElementById('enrichCount').textContent = s.progress + '/' + s.total;
-    document.getElementById('enrichText').textContent = s.enriching ? 'Fetching lyrics & annotations from Genius...' : 'Done!';
-    document.getElementById('statEnriched').textContent = s.enriched_count.toLocaleString();
-
-    if (s.enriching) {
-      setTimeout(pollEnrich, 2000);
-    } else {
-      document.getElementById('enrichBtn').disabled = false;
-      document.getElementById('enrichBtn').textContent = `Fetch More Lyrics (${s.enriched_count} loaded)`;
-      // Reload data to get enriched annotations
-      const r2 = await fetch('/api/data');
-      D = await r2.json();
-      render();
-      setTimeout(() => document.getElementById('enrichBar').classList.add('hidden'), 3000);
-    }
-  } catch(e) {
-    setTimeout(pollEnrich, 3000);
-  }
+    const pct = s.total>0?Math.round(s.progress/s.total*100):0;
+    document.getElementById('enrichFill').style.width=pct+'%';
+    document.getElementById('enrichCount').textContent=s.progress+'/'+s.total;
+    document.getElementById('enrichText').textContent=s.enriching?'Fetching lyrics & annotations from Genius...':'Done!';
+    if (s.enriching) { setTimeout(()=>pollEnrich(reloadArtist),2000); }
+    else { if(reloadArtist) doSearch(); setTimeout(()=>document.getElementById('enrichBar').classList.add('hidden'),2000); }
+  } catch(e) { setTimeout(()=>pollEnrich(reloadArtist),3000); }
 }
 
-// Initial load
-loadData();
+// --- Global View ---
+function showGlobal() {
+  document.getElementById('artistView').classList.add('hidden');
+  document.getElementById('globalView').classList.remove('hidden');
+  document.getElementById('artistInput').value='';
+  AD = null;
+}
+
+async function loadGlobal() {
+  showLoading('Loading global annotation data...');
+  try {
+    const r = await fetch('/api/data');
+    GD = await r.json();
+    if (GD.error) { showError(GD.error); hideLoading(); return; }
+    renderGlobal();
+  } catch(e) { showError(e.message); }
+  hideLoading();
+}
+
+function renderGlobal() {
+  const d = GD;
+  document.getElementById('globalStats').innerHTML = `
+    <div class="stat-card"><div class="value">${(d.total_events||0).toLocaleString()}</div><div class="label">Annotation Opens (30d)</div></div>
+    <div class="stat-card"><div class="value">${(d.unique_annotations||0).toLocaleString()}</div><div class="label">Unique Annotations</div></div>
+    <div class="stat-card"><div class="value">${(d.unique_songs||(d.songs||[]).length||0).toLocaleString()}</div><div class="label">Songs</div></div>
+    <div class="stat-card"><div class="value">${(d.artists||[]).length.toLocaleString()}</div><div class="label">Artists</div></div>
+    <div class="stat-card"><div class="value">${(d.enriched_count||0).toLocaleString()}</div><div class="label">Lyrics Fetched</div></div>
+  `;
+
+  // Artist chart
+  destroyChart('globalArtist');
+  const a12 = (d.artists||[]).slice(0,12);
+  charts.globalArtist = new Chart(document.getElementById('globalArtistChart'), {
+    type:'bar', data:{ labels:a12.map(x=>x.artist_name), datasets:[{data:a12.map(x=>x.total_opens),backgroundColor:COLORS,borderRadius:4}] },
+    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{ticks:{color:'#888'},grid:{color:'rgba(255,255,255,0.05)'}},y:{ticks:{color:'#e0e0e0',font:{size:11}},grid:{display:false}}} }
+  });
+
+  // Song chart
+  destroyChart('globalSong');
+  const s10 = (d.songs||[]).slice(0,10);
+  charts.globalSong = new Chart(document.getElementById('globalSongChart'), {
+    type:'doughnut', data:{ labels:s10.map(x=>{const l=x.song_title+' - '+x.artist_name;return l.length>32?l.slice(0,32)+'...':l;}), datasets:[{data:s10.map(x=>x.open_count),backgroundColor:COLORS,borderWidth:0}] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'right',labels:{color:'#e0e0e0',font:{size:10},padding:6}}} }
+  });
+
+  renderGlobalArtists(d.artists||[]);
+  renderGlobalAnnotations(d.annotations||[]);
+}
+
+function renderGlobalArtists(arr) {
+  const tb=document.getElementById('globalArtistBody'); tb.innerHTML='';
+  arr.forEach((a,i)=>{ const tr=document.createElement('tr'); tr.style.cursor='pointer';
+    tr.onclick=()=>{document.getElementById('artistInput').value=a.artist_name;doSearch();};
+    tr.innerHTML=`<td class="rank">${i+1}</td><td><strong>${esc(a.artist_name)}</strong></td><td><span class="badge badge-count">${a.total_opens.toLocaleString()}</span></td><td>${a.annotation_count}</td><td>${esc(a.top_song)}</td>`;
+    tb.appendChild(tr);
+  });
+}
+document.getElementById('globalArtistSearch').addEventListener('input', function() {
+  const q=this.value.toLowerCase();
+  renderGlobalArtists((GD.artists||[]).filter(a=>a.artist_name.toLowerCase().includes(q)));
+});
+
+function renderGlobalAnnotations(arr) {
+  const tb=document.getElementById('globalAnnoBody'); tb.innerHTML='';
+  arr.forEach((a,i)=>{
+    const tr=document.createElement('tr'); tr.style.cursor='pointer';
+    const aid=a.annotation_id;
+    tr.onclick=()=>toggleGlobalAnno(aid);
+    const hasLyric=!!a.lyric_fragment;
+    let lc=hasLyric?`<span class="lyric">"${esc(a.lyric_fragment.length>60?a.lyric_fragment.slice(0,60)+'...':a.lyric_fragment)}"</span>`:'<span style="color:var(--text-muted);font-size:12px">Click to fetch</span>';
+    const link=a.song_url?`<a class="song-link" href="${esc(a.song_url)}" target="_blank" onclick="event.stopPropagation()">View</a>`:'';
+    tr.innerHTML=`<td class="rank">${i+1}</td><td><strong>${esc(a.song_title)}</strong></td><td>${esc(a.artist_name)}</td><td style="max-width:300px">${lc}</td><td><span class="badge badge-count">${a.open_count.toLocaleString()}</span></td><td>${link}</td>`;
+    tb.appendChild(tr);
+    if(expandedRows.has(aid)&&hasLyric){
+      const dr=document.createElement('tr');dr.className='detail-row';
+      dr.innerHTML=`<td colspan="6"><div class="detail-grid"><div><h3>Annotated Lyrics</h3><div class="detail-lyric">${esc(a.lyric_fragment)||'N/A'}</div></div><div><h3>Annotation</h3><div class="detail-anno">${esc(a.annotation_text)||'N/A'}</div></div></div></td>`;
+      tb.appendChild(dr);
+    }
+  });
+}
+document.getElementById('globalAnnoSearch').addEventListener('input', function() {
+  const q=this.value.toLowerCase();
+  renderGlobalAnnotations((GD.annotations||[]).filter(a=>a.song_title.toLowerCase().includes(q)||a.artist_name.toLowerCase().includes(q)||(a.lyric_fragment||'').toLowerCase().includes(q)||(a.annotation_id||'').includes(q)));
+});
+
+async function toggleGlobalAnno(aid) {
+  if(expandedRows.has(aid)){expandedRows.delete(aid);renderGlobalAnnotations(GD.annotations||[]);return;}
+  const anno=(GD.annotations||[]).find(a=>a.annotation_id===aid);
+  if(anno&&anno.lyric_fragment){expandedRows.add(aid);renderGlobalAnnotations(GD.annotations||[]);return;}
+  if(!aid) return;
+  try{
+    const r=await fetch('/api/annotation/'+aid); const data=await r.json();
+    if(data.lyric_fragment||data.annotation_text){
+      const idx=(GD.annotations||[]).findIndex(a=>a.annotation_id===aid);
+      if(idx>=0) Object.assign(GD.annotations[idx],{lyric_fragment:data.lyric_fragment||'',annotation_text:data.annotation_text||'',song_url:data.song_url||GD.annotations[idx].song_url,genius_song_title:data.song_title||'',genius_artist:data.artist_name||''});
+      expandedRows.add(aid);
+    }
+  }catch(e){console.error(e);}
+  renderGlobalAnnotations(GD.annotations||[]);
+}
+
+// Boot
+loadGlobal();
 </script>
 </body>
 </html>
