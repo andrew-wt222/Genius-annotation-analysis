@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Genius Annotation Analytics</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --yellow: #ffff64;
+      --bg: #121212;
+      --surface: #1e1e1e;
+      --surface2: #2a2a2a;
+      --text: #e0e0e0;
+      --text-muted: #888;
+      --accent: #ffff64;
+      --accent-dim: rgba(255, 255, 100, 0.15);
+      --border: #333;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .header {
+      background: var(--surface);
+      border-bottom: 3px solid var(--yellow);
+      padding: 20px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .header h1 {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--yellow);
+      letter-spacing: -0.5px;
+    }
+    .header h1 span { color: var(--text); font-weight: 400; }
+    .header-actions { display: flex; align-items: center; gap: 12px; }
+    .refresh-btn {
+      background: var(--yellow);
+      color: #000;
+      border: none;
+      padding: 8px 20px;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 14px;
+      transition: opacity 0.2s;
+    }
+    .refresh-btn:hover { opacity: 0.85; }
+    .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .last-updated { font-size: 12px; color: var(--text-muted); }
+
+    .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+
+    /* Stats cards */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      text-align: center;
+    }
+    .stat-card .value {
+      font-size: 36px;
+      font-weight: 700;
+      color: var(--yellow);
+      line-height: 1.1;
+    }
+    .stat-card .label {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Chart + table layout */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 28px;
+    }
+    @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+    }
+    .panel h2 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: var(--yellow);
+    }
+    .panel canvas { max-height: 340px; }
+
+    /* Tables */
+    .table-wrapper { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    th {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 2px solid var(--border);
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+    th:hover { color: var(--yellow); }
+    th .sort-arrow { margin-left: 4px; font-size: 10px; }
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    tr:hover td { background: var(--accent-dim); }
+    .rank {
+      color: var(--yellow);
+      font-weight: 700;
+      font-size: 16px;
+      min-width: 32px;
+    }
+    .lyric-fragment {
+      font-style: italic;
+      color: var(--accent);
+      max-width: 300px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .annotation-text {
+      color: var(--text-muted);
+      max-width: 350px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .song-link {
+      color: var(--text);
+      text-decoration: none;
+      border-bottom: 1px dotted var(--text-muted);
+    }
+    .song-link:hover { color: var(--yellow); border-color: var(--yellow); }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-verified { background: rgba(76, 175, 80, 0.2); color: #66bb6a; }
+    .badge-count { background: var(--accent-dim); color: var(--yellow); }
+
+    /* Filter / search */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .search-box {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 14px;
+      color: var(--text);
+      font-size: 14px;
+      width: 260px;
+    }
+    .search-box:focus { outline: none; border-color: var(--yellow); }
+    .search-box::placeholder { color: var(--text-muted); }
+
+    /* Loading */
+    .loading-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .spinner {
+      width: 48px; height: 48px;
+      border: 4px solid var(--border);
+      border-top-color: var(--yellow);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { color: var(--text); margin-top: 16px; font-size: 14px; }
+    .hidden { display: none; }
+
+    .error-banner {
+      background: rgba(244, 67, 54, 0.15);
+      border: 1px solid rgba(244, 67, 54, 0.4);
+      color: #ef5350;
+      padding: 12px 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-size: 14px;
+    }
+
+    .full-width { grid-column: 1 / -1; }
+  </style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loadingOverlay">
+  <div style="text-align: center;">
+    <div class="spinner"></div>
+    <div class="loading-text">Fetching annotation data...</div>
+  </div>
+</div>
+
+<header class="header">
+  <h1>Genius <span>Annotation Analytics</span></h1>
+  <div class="header-actions">
+    <span class="last-updated" id="lastUpdated"></span>
+    <button class="refresh-btn" id="refreshBtn" onclick="refreshData()">Refresh</button>
+  </div>
+</header>
+
+<div class="container">
+  <div id="errorBanner" class="error-banner hidden"></div>
+
+  <!-- Summary stats -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="value" id="statTotalEvents">-</div>
+      <div class="label">Annotation Opens (30d)</div>
+    </div>
+    <div class="stat-card">
+      <div class="value" id="statUniqueAnnotations">-</div>
+      <div class="label">Unique Annotations</div>
+    </div>
+    <div class="stat-card">
+      <div class="value" id="statTopArtists">-</div>
+      <div class="label">Artists Represented</div>
+    </div>
+    <div class="stat-card">
+      <div class="value" id="statAvgOpens">-</div>
+      <div class="label">Avg Opens / Annotation</div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="grid-2">
+    <div class="panel">
+      <h2>Top Artists by Annotation Opens</h2>
+      <canvas id="artistChart"></canvas>
+    </div>
+    <div class="panel">
+      <h2>Top Songs by Annotation Opens</h2>
+      <canvas id="songChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Top Artists Table -->
+  <div class="panel" style="margin-bottom: 28px;">
+    <h2>Artists Leaderboard</h2>
+    <div class="toolbar">
+      <input type="text" class="search-box" id="artistSearch" placeholder="Search artists...">
+    </div>
+    <div class="table-wrapper">
+      <table id="artistTable">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th data-sort="artist_name">Artist <span class="sort-arrow"></span></th>
+            <th data-sort="total_opens">Total Opens <span class="sort-arrow"></span></th>
+            <th data-sort="annotation_count">Annotations <span class="sort-arrow"></span></th>
+            <th>Top Song</th>
+          </tr>
+        </thead>
+        <tbody id="artistTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Top Lyrics / Annotations Table -->
+  <div class="panel" style="margin-bottom: 28px;">
+    <h2>Top Lyrics &amp; Annotations</h2>
+    <div class="toolbar">
+      <input type="text" class="search-box" id="lyricSearch" placeholder="Search lyrics, songs, or artists...">
+    </div>
+    <div class="table-wrapper">
+      <table id="lyricTable">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th data-sort="lyric_fragment">Lyric <span class="sort-arrow"></span></th>
+            <th data-sort="song_title">Song <span class="sort-arrow"></span></th>
+            <th data-sort="artist_name">Artist <span class="sort-arrow"></span></th>
+            <th data-sort="open_count">Opens <span class="sort-arrow"></span></th>
+            <th data-sort="votes_total">Votes <span class="sort-arrow"></span></th>
+            <th>Annotation</th>
+          </tr>
+        </thead>
+        <tbody id="lyricTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+let dashboardData = null;
+let artistChart = null;
+let songChart = null;
+
+// Chart.js color palette
+const COLORS = [
+  '#ffff64','#ff6384','#36a2eb','#ff9f40','#4bc0c0',
+  '#9966ff','#ff6633','#66bb6a','#ab47bc','#26c6da',
+  '#ef5350','#7e57c2','#ffa726','#42a5f5','#ec407a',
+];
+
+async function loadData(url) {
+  const overlay = document.getElementById('loadingOverlay');
+  const refreshBtn = document.getElementById('refreshBtn');
+  overlay.classList.remove('hidden');
+  refreshBtn.disabled = true;
+
+  try {
+    const resp = await fetch(url);
+    dashboardData = await resp.json();
+
+    if (dashboardData.error) {
+      showError(dashboardData.error);
+    } else {
+      hideError();
+    }
+
+    renderStats();
+    renderArtistChart();
+    renderSongChart();
+    renderArtistTable(dashboardData.artists);
+    renderLyricTable(dashboardData.top_lyrics);
+
+    if (dashboardData.fetched_at) {
+      const d = new Date(dashboardData.fetched_at);
+      document.getElementById('lastUpdated').textContent =
+        'Updated: ' + d.toLocaleString();
+    }
+  } catch (err) {
+    showError('Failed to load data: ' + err.message);
+  } finally {
+    overlay.classList.add('hidden');
+    refreshBtn.disabled = false;
+  }
+}
+
+function refreshData() { loadData('/api/refresh'); }
+
+function showError(msg) {
+  const el = document.getElementById('errorBanner');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+function hideError() {
+  document.getElementById('errorBanner').classList.add('hidden');
+}
+
+// --- Stats ---
+function renderStats() {
+  const d = dashboardData;
+  document.getElementById('statTotalEvents').textContent =
+    (d.total_events || 0).toLocaleString();
+  document.getElementById('statUniqueAnnotations').textContent =
+    (d.unique_annotations || 0).toLocaleString();
+  document.getElementById('statTopArtists').textContent =
+    (d.artists || []).length.toLocaleString();
+
+  const avg = d.unique_annotations
+    ? (d.total_events / d.unique_annotations).toFixed(1)
+    : '0';
+  document.getElementById('statAvgOpens').textContent = avg;
+}
+
+// --- Charts ---
+function renderArtistChart() {
+  const artists = (dashboardData.artists || []).slice(0, 12);
+  const labels = artists.map(a => a.artist_name);
+  const data = artists.map(a => a.total_opens);
+
+  if (artistChart) artistChart.destroy();
+  artistChart = new Chart(document.getElementById('artistChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Annotation Opens',
+        data,
+        backgroundColor: COLORS.slice(0, labels.length),
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+      },
+      scales: {
+        x: {
+          ticks: { color: '#888' },
+          grid: { color: 'rgba(255,255,255,0.05)' },
+        },
+        y: {
+          ticks: { color: '#e0e0e0', font: { size: 12 } },
+          grid: { display: false },
+        },
+      },
+    },
+  });
+}
+
+function renderSongChart() {
+  const lyrics = (dashboardData.top_lyrics || []).slice(0, 10);
+  // Group by song
+  const songMap = {};
+  for (const l of lyrics) {
+    const key = l.song_title + ' - ' + l.artist_name;
+    songMap[key] = (songMap[key] || 0) + l.open_count;
+  }
+  const entries = Object.entries(songMap)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10);
+  const labels = entries.map(e => e[0].length > 35 ? e[0].slice(0, 35) + '...' : e[0]);
+  const data = entries.map(e => e[1]);
+
+  if (songChart) songChart.destroy();
+  songChart = new Chart(document.getElementById('songChart'), {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{
+        data,
+        backgroundColor: COLORS.slice(0, labels.length),
+        borderWidth: 0,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: { color: '#e0e0e0', font: { size: 11 }, padding: 8 },
+        },
+      },
+    },
+  });
+}
+
+// --- Artist Table ---
+let artistSortCol = 'total_opens';
+let artistSortAsc = false;
+
+function renderArtistTable(artists) {
+  const tbody = document.getElementById('artistTableBody');
+  tbody.innerHTML = '';
+  artists.forEach((a, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="rank">${i + 1}</td>
+      <td><strong>${esc(a.artist_name)}</strong></td>
+      <td><span class="badge badge-count">${a.total_opens.toLocaleString()}</span></td>
+      <td>${a.annotation_count}</td>
+      <td>${esc(a.top_song)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+document.getElementById('artistSearch').addEventListener('input', function() {
+  const q = this.value.toLowerCase();
+  const filtered = (dashboardData.artists || []).filter(a =>
+    a.artist_name.toLowerCase().includes(q)
+  );
+  renderArtistTable(filtered);
+});
+
+document.querySelectorAll('#artistTable th[data-sort]').forEach(th => {
+  th.addEventListener('click', () => {
+    const col = th.dataset.sort;
+    if (artistSortCol === col) artistSortAsc = !artistSortAsc;
+    else { artistSortCol = col; artistSortAsc = false; }
+    const sorted = [...(dashboardData.artists || [])].sort((a, b) => {
+      const va = a[col], vb = b[col];
+      if (typeof va === 'number') return artistSortAsc ? va - vb : vb - va;
+      return artistSortAsc
+        ? String(va).localeCompare(String(vb))
+        : String(vb).localeCompare(String(va));
+    });
+    renderArtistTable(sorted);
+  });
+});
+
+// --- Lyrics Table ---
+let lyricSortCol = 'open_count';
+let lyricSortAsc = false;
+
+function renderLyricTable(lyrics) {
+  const tbody = document.getElementById('lyricTableBody');
+  tbody.innerHTML = '';
+  lyrics.forEach((l, i) => {
+    const songLink = l.song_url
+      ? `<a class="song-link" href="${esc(l.song_url)}" target="_blank">${esc(l.song_title)}</a>`
+      : esc(l.song_title);
+    const verifiedBadge = l.verified
+      ? ' <span class="badge badge-verified">Verified</span>'
+      : '';
+    const annotSnippet = (l.annotation_text || '').slice(0, 120);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="rank">${i + 1}</td>
+      <td class="lyric-fragment" title="${esc(l.lyric_fragment)}">${esc(l.lyric_fragment)}</td>
+      <td>${songLink}</td>
+      <td>${esc(l.artist_name)}</td>
+      <td><span class="badge badge-count">${l.open_count.toLocaleString()}</span></td>
+      <td>${l.votes_total}${verifiedBadge}</td>
+      <td class="annotation-text" title="${esc(l.annotation_text)}">${esc(annotSnippet)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+document.getElementById('lyricSearch').addEventListener('input', function() {
+  const q = this.value.toLowerCase();
+  const filtered = (dashboardData.top_lyrics || []).filter(l =>
+    l.lyric_fragment.toLowerCase().includes(q) ||
+    l.song_title.toLowerCase().includes(q) ||
+    l.artist_name.toLowerCase().includes(q) ||
+    (l.annotation_text || '').toLowerCase().includes(q)
+  );
+  renderLyricTable(filtered);
+});
+
+document.querySelectorAll('#lyricTable th[data-sort]').forEach(th => {
+  th.addEventListener('click', () => {
+    const col = th.dataset.sort;
+    if (lyricSortCol === col) lyricSortAsc = !lyricSortAsc;
+    else { lyricSortCol = col; lyricSortAsc = false; }
+    const sorted = [...(dashboardData.top_lyrics || [])].sort((a, b) => {
+      const va = a[col], vb = b[col];
+      if (typeof va === 'number') return lyricSortAsc ? va - vb : vb - va;
+      return lyricSortAsc
+        ? String(va).localeCompare(String(vb))
+        : String(vb).localeCompare(String(va));
+    });
+    renderLyricTable(sorted);
+  });
+});
+
+function esc(str) {
+  if (!str) return '';
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+// Initial load
+loadData('/api/data');
+</script>
+</body>
+</html>
