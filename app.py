@@ -128,12 +128,19 @@ def _query_mixpanel_artist(artist, days, event_name):
     to_date = datetime.utcnow().date()
     from_date = to_date - timedelta(days=days)
 
+    # Escape double quotes in artist name for the where expression
+    safe_artist = artist.replace('\\', '\\\\').replace('"', '\\"')
+    where_expr = f'properties["Primary Artist"] == "{safe_artist}"'
+
     params = {
         "from_date": from_date.isoformat(),
         "to_date": to_date.isoformat(),
         "event": json.dumps([event_name]),
-        "where": f'properties["Primary Artist"] == "{artist}"',
+        "where": where_expr,
     }
+
+    logger.info("Mixpanel query: event=%s artist=%s from=%s to=%s",
+                event_name, artist, from_date, to_date)
 
     resp = req.get(
         config.MIXPANEL_EXPORT_URL,
@@ -141,6 +148,10 @@ def _query_mixpanel_artist(artist, days, event_name):
         auth=(config.MIXPANEL_API_SECRET, ""),
         timeout=120,
     )
+
+    # Log the actual URL for debugging
+    if resp.status_code != 200:
+        logger.error("Mixpanel returned %d: %s", resp.status_code, resp.text[:500])
     resp.raise_for_status()
 
     events = []
