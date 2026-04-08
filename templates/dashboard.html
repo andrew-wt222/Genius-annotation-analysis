@@ -255,7 +255,7 @@
     </div>
     <div class="stat-card">
       <div class="value" id="statUniqueAnnotations">-</div>
-      <div class="label">Unique Annotations</div>
+      <div class="label">Songs with Annotations</div>
     </div>
     <div class="stat-card">
       <div class="value" id="statTopArtists">-</div>
@@ -263,7 +263,7 @@
     </div>
     <div class="stat-card">
       <div class="value" id="statAvgOpens">-</div>
-      <div class="label">Avg Opens / Annotation</div>
+      <div class="label">Avg Opens / Song</div>
     </div>
   </div>
 
@@ -301,23 +301,20 @@
     </div>
   </div>
 
-  <!-- Top Lyrics / Annotations Table -->
+  <!-- Top Songs by Annotation Opens -->
   <div class="panel" style="margin-bottom: 28px;">
-    <h2>Top Lyrics &amp; Annotations</h2>
+    <h2>Top Songs by Annotation Opens</h2>
     <div class="toolbar">
-      <input type="text" class="search-box" id="lyricSearch" placeholder="Search lyrics, songs, or artists...">
+      <input type="text" class="search-box" id="lyricSearch" placeholder="Search songs or artists...">
     </div>
     <div class="table-wrapper">
       <table id="lyricTable">
         <thead>
           <tr>
             <th>#</th>
-            <th data-sort="lyric_fragment">Lyric <span class="sort-arrow"></span></th>
             <th data-sort="song_title">Song <span class="sort-arrow"></span></th>
             <th data-sort="artist_name">Artist <span class="sort-arrow"></span></th>
-            <th data-sort="open_count">Opens <span class="sort-arrow"></span></th>
-            <th data-sort="votes_total">Votes <span class="sort-arrow"></span></th>
-            <th>Annotation</th>
+            <th data-sort="open_count">Annotation Opens <span class="sort-arrow"></span></th>
           </tr>
         </thead>
         <tbody id="lyricTableBody"></tbody>
@@ -529,22 +526,12 @@ function renderLyricTable(lyrics) {
   const tbody = document.getElementById('lyricTableBody');
   tbody.innerHTML = '';
   lyrics.forEach((l, i) => {
-    const songLink = l.song_url
-      ? `<a class="song-link" href="${esc(l.song_url)}" target="_blank">${esc(l.song_title)}</a>`
-      : esc(l.song_title);
-    const verifiedBadge = l.verified
-      ? ' <span class="badge badge-verified">Verified</span>'
-      : '';
-    const annotSnippet = (l.annotation_text || '').slice(0, 120);
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td class="rank">${i + 1}</td>
-      <td class="lyric-fragment" title="${esc(l.lyric_fragment)}">${esc(l.lyric_fragment)}</td>
-      <td>${songLink}</td>
+      <td><strong>${esc(l.song_title)}</strong></td>
       <td>${esc(l.artist_name)}</td>
       <td><span class="badge badge-count">${l.open_count.toLocaleString()}</span></td>
-      <td>${l.votes_total}${verifiedBadge}</td>
-      <td class="annotation-text" title="${esc(l.annotation_text)}">${esc(annotSnippet)}</td>
     `;
     tbody.appendChild(tr);
   });

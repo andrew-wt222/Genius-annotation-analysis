@@ -5,11 +5,9 @@ import logging
 import os
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 from flask import Flask, jsonify, render_template
-
-import genius_client
-import mixpanel_client
 
 logging.basicConfig(
     level=logging.INFO,
@@ -19,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
+CACHE_FILE = Path(__file__).parent / "data_cache.json"
+
 # In-memory cache so we don't re-fetch on every page load
 _cache = {
     "data": None,
@@ -27,75 +27,100 @@ _cache = {
 }
 
 
+def _load_from_cache_file():
+    """Load pre-fetched data from the JSON cache file."""
+    if CACHE_FILE.exists():
+        with open(CACHE_FILE) as f:
+            return json.load(f)
+    return None
+
+
 def _build_dashboard_data():
-    """Fetch Mixpanel events, enrich with Genius metadata, aggregate."""
-    # 1. Pull annotation events from Mixpanel
-    events = mixpanel_client.fetch_annotation_events()
-    if not events:
+    """Try live API fetch, fall back to pre-built cache file."""
+    # First try the cache file (works when live APIs are unreachable)
+    cached = _load_from_cache_file()
+    if cached:
+        logger.info("Loaded data from cache file (%d artists, %d songs)",
+                     len(cached.get("artists", [])),
+                     len(cached.get("top_lyrics", [])))
+        return cached
+
+    # Fall back to live API fetch
+    try:
+        import mixpanel_client
+        import genius_client
+
+        events = mixpanel_client.fetch_annotation_events()
+        if not events:
+            return {
+                "error": None,
+                "fetched_at": datetime.now(timezone.utc).isoformat(),
+                "total_events": 0,
+                "unique_annotations": 0,
+                "annotations": [],
+                "artists": [],
+                "top_lyrics": [],
+            }
+
+        counts = mixpanel_client.aggregate_annotation_counts(events)
+        top_annotation_ids = list(counts.keys())[:200]
+        genius_data = genius_client.fetch_annotations_batch(top_annotation_ids)
+
+        annotations = []
+        for aid, open_count in counts.items():
+            meta = genius_data.get(aid)
+            annotations.append({
+                "annotation_id": aid,
+                "open_count": open_count,
+                "lyric_fragment": meta["lyric_fragment"] if meta else "",
+                "annotation_text": meta["annotation_text"] if meta else "",
+                "song_title": meta["song_title"] if meta else "Unknown",
+                "song_url": meta["song_url"] if meta else "",
+                "artist_name": meta["artist_name"] if meta else "Unknown",
+                "votes_total": meta["votes_total"] if meta else 0,
+                "verified": meta["verified"] if meta else False,
+            })
+
+        artist_map = {}
+        for a in annotations:
+            name = a["artist_name"]
+            if name not in artist_map:
+                artist_map[name] = {
+                    "artist_name": name,
+                    "total_opens": 0,
+                    "annotation_count": 0,
+                    "top_song": "",
+                }
+            artist_map[name]["total_opens"] += a["open_count"]
+            artist_map[name]["annotation_count"] += 1
+            if not artist_map[name]["top_song"] or a["open_count"] > 0:
+                artist_map[name]["top_song"] = a["song_title"]
+
+        artists = sorted(
+            artist_map.values(), key=lambda x: x["total_opens"], reverse=True
+        )
+        top_lyrics = sorted(annotations, key=lambda x: x["open_count"], reverse=True)[:100]
+
         return {
             "error": None,
             "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "total_events": len(events),
+            "unique_annotations": len(counts),
+            "annotations": annotations,
+            "artists": artists[:100],
+            "top_lyrics": top_lyrics,
+        }
+    except Exception as exc:
+        logger.warning("Live API fetch failed: %s", exc)
+        return {
+            "error": f"Live API unavailable and no cache file found: {exc}",
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
             "total_events": 0,
+            "unique_annotations": 0,
             "annotations": [],
             "artists": [],
             "top_lyrics": [],
         }
-
-    # 2. Count opens per annotation
-    counts = mixpanel_client.aggregate_annotation_counts(events)
-    top_annotation_ids = list(counts.keys())[:200]
-
-    # 3. Enrich top annotations with Genius metadata
-    genius_data = genius_client.fetch_annotations_batch(top_annotation_ids)
-
-    # 4. Build enriched annotation list
-    annotations = []
-    for aid, open_count in counts.items():
-        meta = genius_data.get(aid)
-        annotations.append({
-            "annotation_id": aid,
-            "open_count": open_count,
-            "lyric_fragment": meta["lyric_fragment"] if meta else "",
-            "annotation_text": meta["annotation_text"] if meta else "",
-            "song_title": meta["song_title"] if meta else "Unknown",
-            "song_url": meta["song_url"] if meta else "",
-            "artist_name": meta["artist_name"] if meta else "Unknown",
-            "votes_total": meta["votes_total"] if meta else 0,
-            "verified": meta["verified"] if meta else False,
-        })
-
-    # 5. Aggregate by artist
-    artist_map = {}
-    for a in annotations:
-        name = a["artist_name"]
-        if name not in artist_map:
-            artist_map[name] = {
-                "artist_name": name,
-                "total_opens": 0,
-                "annotation_count": 0,
-                "top_song": "",
-            }
-        artist_map[name]["total_opens"] += a["open_count"]
-        artist_map[name]["annotation_count"] += 1
-        if not artist_map[name]["top_song"] or a["open_count"] > 0:
-            artist_map[name]["top_song"] = a["song_title"]
-
-    artists = sorted(
-        artist_map.values(), key=lambda x: x["total_opens"], reverse=True
-    )
-
-    # 6. Top lyrics (by open count)
-    top_lyrics = sorted(annotations, key=lambda x: x["open_count"], reverse=True)[:50]
-
-    return {
-        "error": None,
-        "fetched_at": datetime.now(timezone.utc).isoformat(),
-        "total_events": len(events),
-        "unique_annotations": len(counts),
-        "annotations": annotations,
-        "artists": artists[:50],
-        "top_lyrics": top_lyrics,
-    }
 
 
 def _get_data(force_refresh=False):
@@ -109,19 +134,7 @@ def _get_data(force_refresh=False):
     ):
         return _cache["data"]
 
-    try:
-        data = _build_dashboard_data()
-    except Exception as exc:
-        logger.exception("Error building dashboard data")
-        data = {
-            "error": str(exc),
-            "fetched_at": datetime.now(timezone.utc).isoformat(),
-            "total_events": 0,
-            "annotations": [],
-            "artists": [],
-            "top_lyrics": [],
-        }
-
+    data = _build_dashboard_data()
     _cache["data"] = data
     _cache["fetched_at"] = now
     return data
