@@ -121,12 +121,28 @@ def query_mixpanel_month(artist, event_name, year_month):
 
     logger.info("  Querying %s for %s (%s)", event_name, artist, year_month)
 
-    resp = requests.get(
-        config.MIXPANEL_EXPORT_URL,
-        params=params,
-        auth=(config.MIXPANEL_API_SECRET, ""),
-        timeout=120,
-    )
+    for attempt in range(3):
+        try:
+            resp = requests.get(
+                config.MIXPANEL_EXPORT_URL,
+                params=params,
+                auth=(config.MIXPANEL_API_SECRET, ""),
+                timeout=300,  # 5 min timeout for large artists
+            )
+            break
+        except requests.exceptions.ReadTimeout:
+            if attempt < 2:
+                wait = 5 * (attempt + 1)
+                logger.warning("  Timeout for %s/%s/%s, retrying in %ds (attempt %d/3)",
+                               artist, event_name, year_month, wait, attempt + 1)
+                time.sleep(wait)
+            else:
+                logger.error("  Final timeout for %s/%s/%s after 3 attempts",
+                             artist, event_name, year_month)
+                return []
+        except requests.exceptions.RequestException as exc:
+            logger.error("  Request error for %s/%s/%s: %s", artist, event_name, year_month, exc)
+            return []
 
     if resp.status_code != 200:
         logger.warning("  Mixpanel %d for %s/%s/%s: %s",
