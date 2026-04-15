@@ -32,53 +32,55 @@ CACHE_DIR.mkdir(exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # Phase 1: The "Class of 2023" Cohort
-# Artists who crossed 3M+ Spotify monthly listeners during Jan–Jun 2023
+# Artists with verified H1 2023 breakout milestones.
+# Peak months assigned based on documented breakout timing.
+# No fabricated streaming numbers — Genius traffic is the baseline.
 # ---------------------------------------------------------------------------
 
 COHORT = [
-    # --- RAP ---
-    {"name": "Ice Spice",          "genre": "Rap",         "peak_month": "2023-01", "peak_spotify_ml": 28.0, "label_status": "Signed 10/80/Capitol"},
-    {"name": "GloRilla",           "genre": "Rap",         "peak_month": "2023-02", "peak_spotify_ml": 18.5, "label_status": "Signed CMG/Interscope"},
-    {"name": "Central Cee",        "genre": "Rap",         "peak_month": "2023-03", "peak_spotify_ml": 32.0, "label_status": "Signed Columbia UK"},
-    {"name": "Sexyy Red",          "genre": "Rap",         "peak_month": "2023-05", "peak_spotify_ml": 12.0, "label_status": "Signed Republic"},
-    {"name": "Ken Carson",         "genre": "Rap",         "peak_month": "2023-02", "peak_spotify_ml": 5.2,  "label_status": "Signed Opium/Interscope"},
-    {"name": "Destroy Lonely",     "genre": "Rap",         "peak_month": "2023-03", "peak_spotify_ml": 4.8,  "label_status": "Signed Opium/Interscope"},
-    {"name": "Lil Yachty",         "genre": "Rap",         "peak_month": "2023-02", "peak_spotify_ml": 15.0, "label_status": "Signed Quality Control/Motown"},
-    {"name": "NLE Choppa",         "genre": "Rap",         "peak_month": "2023-01", "peak_spotify_ml": 14.0, "label_status": "Signed Warner"},
-    {"name": "DD Osama",           "genre": "Rap",         "peak_month": "2023-03", "peak_spotify_ml": 3.5,  "label_status": "Independent"},
-    {"name": "Armani White",       "genre": "Rap",         "peak_month": "2023-01", "peak_spotify_ml": 5.0,  "label_status": "Signed Def Jam"},
-    {"name": "That Mexican OT",    "genre": "Rap",         "peak_month": "2023-04", "peak_spotify_ml": 3.8,  "label_status": "Signed Island"},
-    {"name": "BossMan Dlow",       "genre": "Rap",         "peak_month": "2023-06", "peak_spotify_ml": 3.2,  "label_status": "Signed Geffen"},
-    {"name": "Lola Brooke",        "genre": "Rap",         "peak_month": "2023-03", "peak_spotify_ml": 4.5,  "label_status": "Signed Arista"},
-    {"name": "Fridayy",            "genre": "Rap",         "peak_month": "2023-01", "peak_spotify_ml": 7.0,  "label_status": "Signed Def Jam"},
-    # --- POP ---
-    {"name": "PinkPantheress",     "genre": "Pop",         "peak_month": "2023-03", "peak_spotify_ml": 25.0, "label_status": "Signed Parlophone/Warner"},
-    {"name": "Tate McRae",         "genre": "Pop",         "peak_month": "2023-04", "peak_spotify_ml": 28.0, "label_status": "Signed RCA"},
-    {"name": "Reneé Rapp",         "genre": "Pop",         "peak_month": "2023-06", "peak_spotify_ml": 8.5,  "label_status": "Signed Interscope"},
-    {"name": "Sabrina Carpenter",  "genre": "Pop",         "peak_month": "2023-06", "peak_spotify_ml": 18.0, "label_status": "Signed Island"},
-    {"name": "Noah Kahan",         "genre": "Pop",         "peak_month": "2023-04", "peak_spotify_ml": 30.0, "label_status": "Signed Republic"},
-    {"name": "Zach Bryan",         "genre": "Pop",         "peak_month": "2023-04", "peak_spotify_ml": 35.0, "label_status": "Signed Warner"},
-    {"name": "Fifty Fifty",        "genre": "Pop",         "peak_month": "2023-04", "peak_spotify_ml": 22.0, "label_status": "Signed ATTRAKT/Warner"},
-    {"name": "Stephen Sanchez",    "genre": "Pop",         "peak_month": "2023-02", "peak_spotify_ml": 15.0, "label_status": "Signed Republic"},
-    {"name": "Lauren Spencer-Smith","genre": "Pop",        "peak_month": "2023-01", "peak_spotify_ml": 12.0, "label_status": "Signed Island"},
-    {"name": "Benson Boone",       "genre": "Pop",         "peak_month": "2023-05", "peak_spotify_ml": 8.0,  "label_status": "Signed Warner"},
-    {"name": "Isabel LaRosa",      "genre": "Pop",         "peak_month": "2023-03", "peak_spotify_ml": 6.0,  "label_status": "Signed Columbia"},
-    {"name": "d4vd",               "genre": "Pop",         "peak_month": "2023-02", "peak_spotify_ml": 18.0, "label_status": "Signed Darkroom/Interscope"},
-    {"name": "Jimin",              "genre": "Pop",         "peak_month": "2023-03", "peak_spotify_ml": 40.0, "label_status": "Signed BIGHIT/HYBE"},
-    # --- ALTERNATIVE / INDIE ---
-    {"name": "boygenius",          "genre": "Alternative",  "peak_month": "2023-03", "peak_spotify_ml": 8.0,  "label_status": "Signed Interscope"},
-    {"name": "TV Girl",            "genre": "Alternative",  "peak_month": "2023-05", "peak_spotify_ml": 7.5,  "label_status": "Independent"},
-    {"name": "Ethel Cain",         "genre": "Alternative",  "peak_month": "2023-02", "peak_spotify_ml": 4.0,  "label_status": "Independent"},
-    {"name": "Dominic Fike",       "genre": "Alternative",  "peak_month": "2023-01", "peak_spotify_ml": 12.0, "label_status": "Signed Columbia"},
-    {"name": "Mitski",             "genre": "Alternative",  "peak_month": "2023-04", "peak_spotify_ml": 14.0, "label_status": "Signed Dead Oceans"},
-    {"name": "Wet Leg",            "genre": "Alternative",  "peak_month": "2023-01", "peak_spotify_ml": 5.5,  "label_status": "Signed Domino"},
-    {"name": "Yeat",               "genre": "Alternative",  "peak_month": "2023-03", "peak_spotify_ml": 16.0, "label_status": "Signed Geffen/Field Trip"},
-    {"name": "Lovejoy",            "genre": "Alternative",  "peak_month": "2023-02", "peak_spotify_ml": 4.0,  "label_status": "Independent"},
-    {"name": "Panchiko",           "genre": "Alternative",  "peak_month": "2023-01", "peak_spotify_ml": 3.0,  "label_status": "Independent"},
-    {"name": "Sleep Token",        "genre": "Alternative",  "peak_month": "2023-05", "peak_spotify_ml": 6.5,  "label_status": "Signed Spinefarm"},
-    {"name": "Mk.gee",             "genre": "Alternative",  "peak_month": "2023-06", "peak_spotify_ml": 3.0,  "label_status": "Independent"},
-    {"name": "The Last Dinner Party","genre": "Alternative","peak_month": "2023-06", "peak_spotify_ml": 3.5,  "label_status": "Signed Island UK"},
-    {"name": "Riovaz",             "genre": "Alternative",  "peak_month": "2023-04", "peak_spotify_ml": 3.0,  "label_status": "Independent"},
+    # --- RAP (14 artists) ---
+    {"name": "Ice Spice",        "genre": "Rap",  "peak_month": "2023-03", "breakout": "Boy's a Liar Pt. 2 & Like..? EP",           "label_status": "10K Projects / Capitol (Major)"},
+    {"name": "Sexyy Red",        "genre": "Rap",  "peak_month": "2023-04", "breakout": "Pound Town viral breakout",                  "label_status": "Open Shift / Gamma (Independent/Dist)"},
+    {"name": "Central Cee",      "genre": "Rap",  "peak_month": "2023-06", "breakout": "Sprinter global peak",                       "label_status": "Columbia (Major)"},
+    {"name": "Coi Leray",        "genre": "Rap",  "peak_month": "2023-03", "breakout": "Players viral peak",                         "label_status": "Uptown / Republic (Major)"},
+    {"name": "Doechii",          "genre": "Rap",  "peak_month": "2023-02", "breakout": "What It Is (Block Boy)",                      "label_status": "TDE / Capitol (Indie/Major Dist)"},
+    {"name": "GloRilla",         "genre": "Rap",  "peak_month": "2023-02", "breakout": "H1 singles & Grammy performance",            "label_status": "CMG / Interscope (Indie/Major Dist)"},
+    {"name": "Lola Brooke",      "genre": "Rap",  "peak_month": "2023-03", "breakout": "Don't Play With It breakout",                "label_status": "Arista (Major)"},
+    {"name": "Kaliii",           "genre": "Rap",  "peak_month": "2023-04", "breakout": "Area Codes viral breakout",                  "label_status": "Atlantic (Major)"},
+    {"name": "Destroy Lonely",   "genre": "Rap",  "peak_month": "2023-03", "breakout": "If Looks Could Kill chart entry",            "label_status": "Opium / Interscope (Indie/Major Dist)"},
+    {"name": "Ken Carson",       "genre": "Rap",  "peak_month": "2023-02", "breakout": "Continued surge following X",                "label_status": "Opium / Interscope (Indie/Major Dist)"},
+    {"name": "ScarLip",          "genre": "Rap",  "peak_month": "2023-03", "breakout": "Glizzy Glo viral breakout",                  "label_status": "Epic (Major)"},
+    {"name": "Rylo Rodriguez",   "genre": "Rap",  "peak_month": "2023-04", "breakout": "Been One album success",                     "label_status": "Glass Window / Virgin (Indie/Major Dist)"},
+    {"name": "NLE Choppa",       "genre": "Rap",  "peak_month": "2023-04", "breakout": "Cottonwood 2 & Slut Me Out peak",            "label_status": "Warner (Major)"},
+    {"name": "Real Boston Richey","genre": "Rap", "peak_month": "2023-04", "breakout": "Public Housing Pt. 2 momentum",              "label_status": "Freebandz / Epic (Indie/Major Dist)"},
+    # --- POP (13 artists) ---
+    {"name": "PinkPantheress",   "genre": "Pop",  "peak_month": "2023-03", "breakout": "Boy's a Liar Pt. 2 global #1",              "label_status": "Parlophone / Elektra (Major)"},
+    {"name": "Peso Pluma",       "genre": "Pop",  "peak_month": "2023-05", "breakout": "Ella Baila Sola (Musica Mexicana peak)",     "label_status": "Prajin Records (Independent)"},
+    {"name": "Fifty Fifty",      "genre": "Pop",  "peak_month": "2023-04", "breakout": "Cupid K-Pop crossover peak",                "label_status": "ATTRAKT / Warner (Indie/Major Dist)"},
+    {"name": "NewJeans",         "genre": "Pop",  "peak_month": "2023-01", "breakout": "OMG & Ditto US chart entry",                "label_status": "ADOR / HYBE (Major/Subsidiary)"},
+    {"name": "Raye",             "genre": "Pop",  "peak_month": "2023-02", "breakout": "Escapism peak (Independent success)",        "label_status": "Human Re Sources (Independent)"},
+    {"name": "Libianca",         "genre": "Pop",  "peak_month": "2023-04", "breakout": "People global Afrobeats peak",              "label_status": "5K Records / Sony (Indie/Major Dist)"},
+    {"name": "Eslabon Armado",   "genre": "Pop",  "peak_month": "2023-05", "breakout": "Ella Baila Sola (Latin-Pop peak)",           "label_status": "DEL Records (Independent)"},
+    {"name": "Gracie Abrams",    "genre": "Pop",  "peak_month": "2023-06", "breakout": "Good Riddance debut album",                 "label_status": "Interscope (Major)"},
+    {"name": "Stephen Sanchez",  "genre": "Pop",  "peak_month": "2023-03", "breakout": "Until I Found You global longevity",        "label_status": "Republic (Major)"},
+    {"name": "David Kushner",    "genre": "Pop",  "peak_month": "2023-04", "breakout": "Daylight viral breakout",                   "label_status": "Mojo Music / Miserable (Independent)"},
+    {"name": "Loreen",           "genre": "Pop",  "peak_month": "2023-05", "breakout": "Tattoo Eurovision win",                     "label_status": "Universal / Island (Major)"},
+    {"name": "Mae Stephens",     "genre": "Pop",  "peak_month": "2023-03", "breakout": "If We Ever Broke Up viral peak",            "label_status": "EMI (Major)"},
+    {"name": "JVKE",             "genre": "Pop",  "peak_month": "2023-01", "breakout": "Golden Hour global peak",                   "label_status": "AWAL (Independent/Dist)"},
+    # --- ALTERNATIVE / INDIE (13 artists) ---
+    {"name": "Noah Kahan",       "genre": "Alternative", "peak_month": "2023-04", "breakout": "Stick Season deluxe (Folklore peak)", "label_status": "Republic (Major)"},
+    {"name": "d4vd",             "genre": "Alternative", "peak_month": "2023-02", "breakout": "Here with Me & Romantic Homicide",    "label_status": "Darkroom / Interscope (Indie/Major Dist)"},
+    {"name": "Lizzy McAlpine",   "genre": "Alternative", "peak_month": "2023-03", "breakout": "Ceilings TikTok breakout",           "label_status": "AWAL / RCA (Indie/Major Dist)"},
+    {"name": "boygenius",        "genre": "Alternative", "peak_month": "2023-03", "breakout": "the record (Indie-Supergroup peak)",  "label_status": "Interscope (Major)"},
+    {"name": "Laufey",           "genre": "Alternative", "peak_month": "2023-06", "breakout": "Bewitched rollout & Jazz-Pop surge",  "label_status": "AWAL (Independent/Dist)"},
+    {"name": "Hemlocke Springs", "genre": "Alternative", "peak_month": "2023-02", "breakout": "Girlfriend viral breakout",          "label_status": "Independent"},
+    {"name": "Paris Paloma",     "genre": "Alternative", "peak_month": "2023-05", "breakout": "Labour viral feminist anthem",       "label_status": "Nettwerk (Independent)"},
+    {"name": "The Last Dinner Party", "genre": "Alternative", "peak_month": "2023-06", "breakout": "Nothing Matters debut breakout", "label_status": "Island (Major)"},
+    {"name": "Mitski",           "genre": "Alternative", "peak_month": "2023-03", "breakout": "Catalog surge/resurgence H1 2023",   "label_status": "Dead Oceans (Independent)"},
+    {"name": "Lovejoy",          "genre": "Alternative", "peak_month": "2023-03", "breakout": "Wake Up & It's Over EP",             "label_status": "Independent"},
+    {"name": "TV Girl",          "genre": "Alternative", "peak_month": "2023-05", "breakout": "Global catalog surge via TikTok",    "label_status": "Independent"},
+    {"name": "Beabadoobee",      "genre": "Alternative", "peak_month": "2023-04", "breakout": "the perfect pair breakout momentum", "label_status": "Dirty Hit (Independent)"},
+    {"name": "ROAR",             "genre": "Alternative", "peak_month": "2023-03", "breakout": "Christmas Kids viral breakout",      "label_status": "Independent"},
 ]
 
 
@@ -346,10 +348,10 @@ def generate_report(results, aor_q25, aor_q75):
     advance_per_artist = 1_500_000
     capital_destroyed = len(hr_crashed) * advance_per_artist
 
-    # Find "Bullet Dodged" artists: high Spotify, terrible Genius, crashed
+    # Find "Bullet Dodged" artists: high Genius traffic at peak, terrible engagement, crashed
     bullet_dodged = sorted(
         [r for r in results if r["retention"]["crashed"] and r["baseline"]["spu"] < 1.2],
-        key=lambda r: r["peak_spotify_ml"], reverse=True
+        key=lambda r: r["baseline"]["total_views"], reverse=True
     )[:3]
 
     # Find "Sleeper Hold" artists: moderate Spotify, elite Genius, retained
@@ -399,14 +401,15 @@ def generate_report(results, aor_q25, aor_q75):
 
     # Full Cohort Table
     lines.append("## Full Cohort: Class of 2023\n")
-    lines.append("| # | Artist | Genre | Tier | Peak Spotify (M) | AOR | SPU | Peak Users | Floor Ret. | CV | Crashed |")
-    lines.append("|---|--------|-------|------|-------------------|-----|-----|------------|------------|-----|---------|")
+    lines.append("| # | Artist | Genre | Tier | Breakout | Peak Views | AOR | SPU | Peak Users | Floor Ret. | CV | Crashed |")
+    lines.append("|---|--------|-------|------|----------|------------|-----|-----|------------|------------|-----|---------|")
 
     for i, r in enumerate(sorted(results, key=lambda x: x["baseline"]["spu"], reverse=True)):
         crashed_icon = "YES" if r["retention"]["crashed"] else "No"
+        breakout_short = r.get("breakout", "")[:30]
         lines.append(
             f"| {i+1} | **{r['name']}** | {r['genre']} | {r['tier']} | "
-            f"{r['peak_spotify_ml']}M | {r['baseline']['aor']:.4f} | {r['baseline']['spu']:.3f} | "
+            f"{breakout_short} | {r['baseline']['total_views']:,} | {r['baseline']['aor']:.4f} | {r['baseline']['spu']:.3f} | "
             f"{r['retention']['peak_users']:,} | {r['retention']['floor_retention']:.1%} | "
             f"{r['retention']['cv']:.2f} | {crashed_icon} |"
         )
@@ -415,13 +418,14 @@ def generate_report(results, aor_q25, aor_q75):
 
     # Bullet Dodged Matrix
     lines.append('## The "Bullet Dodged" Matrix (TikTok Mirage)\n')
-    lines.append("These artists had **massive streaming numbers** but **terrible Genius engagement**.")
-    lines.append("The warning signs were visible in the data while the deals were being signed.\n")
+    lines.append("These artists had **high peak traffic** but **terrible Genius engagement depth**.")
+    lines.append("The warning signs were visible in the behavioral data while the deals were being signed.\n")
 
     for r in bullet_dodged:
         lines.append(f"### {r['name']} ({r['genre']})")
-        lines.append(f"- **Peak Spotify:** {r['peak_spotify_ml']}M monthly listeners")
+        lines.append(f"- **Breakout:** {r.get('breakout', 'N/A')}")
         lines.append(f"- **Label Status:** {r['label_status']}")
+        lines.append(f"- **Peak Month Traffic:** {r['baseline']['total_views']:,} page views, {r['baseline']['unique_users']:,} unique users")
         lines.append(f"- **Baseline AOR:** {r['baseline']['aor']:.4f} | **SPU:** {r['baseline']['spu']:.3f}")
         lines.append(f"- **12-Month Floor:** {r['retention']['floor_retention']:.1%} of peak")
         lines.append(f"- **CV:** {r['retention']['cv']:.2f} (volatility)")
@@ -432,19 +436,20 @@ def generate_report(results, aor_q25, aor_q75):
 
     # Sleeper Hold Matrix
     lines.append('## The "Sleeper Hold" Matrix (Hidden Compounders)\n')
-    lines.append("These artists had **moderate streaming numbers** but **elite Genius engagement**.")
-    lines.append("They retained and compounded their audience while the viral acts collapsed.\n")
+    lines.append("These artists showed **elite Genius engagement depth** at peak — and retained their audience")
+    lines.append("while the viral acts collapsed around them.\n")
 
     for r in sleepers:
         lines.append(f"### {r['name']} ({r['genre']})")
-        lines.append(f"- **Peak Spotify:** {r['peak_spotify_ml']}M monthly listeners")
+        lines.append(f"- **Breakout:** {r.get('breakout', 'N/A')}")
         lines.append(f"- **Label Status:** {r['label_status']}")
+        lines.append(f"- **Peak Month Traffic:** {r['baseline']['total_views']:,} page views, {r['baseline']['unique_users']:,} unique users")
         lines.append(f"- **Baseline AOR:** {r['baseline']['aor']:.4f} | **SPU:** {r['baseline']['spu']:.3f}")
         lines.append(f"- **12-Month Floor:** {r['retention']['floor_retention']:.1%} of peak")
         lines.append(f"- **CV:** {r['retention']['cv']:.2f} (stability)")
-        lines.append(f"- **Verdict:** Retained. High SPU indicates users explored the full catalog.")
-        lines.append(f"  High AOR indicates the audience was actively interpreting the art — a leading")
-        lines.append(f"  indicator of emotional investment and long-term fandom.\n")
+        lines.append(f"- **Verdict:** Retained. High SPU means users explored the full catalog —")
+        lines.append(f"  they came as listeners and stayed as fans. High AOR means the audience was")
+        lines.append(f"  actively interpreting the art, a leading indicator of emotional investment.\n")
 
     lines.append("---\n")
 
@@ -494,7 +499,7 @@ if __name__ == "__main__":
         if not match:
             logger.info("Artist not in cohort. Using default peak month 2023-03.")
             match = [{"name": args.artist, "genre": "Unknown", "peak_month": "2023-03",
-                       "peak_spotify_ml": 0, "label_status": "Unknown"}]
+                       "breakout": "Custom lookup", "label_status": "Unknown"}]
         artist = match[0]
         logger.info("Single artist audit: %s", artist["name"])
         baseline = calc_month_metrics(artist["name"], artist["peak_month"])
