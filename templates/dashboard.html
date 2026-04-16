@@ -193,10 +193,10 @@
 
     <div class="filter-bar">
       <label>Max views (90d)
-        <input type="number" id="maxViews" placeholder="e.g. 100000" title="Hide mainstream artists above this page-view count">
+        <input type="number" id="maxViews" value="50000" title="Hide mainstream artists above this page-view count">
       </label>
       <label>Min users
-        <input type="number" id="minUsers" placeholder="e.g. 500" title="Require at least this many unique users (filters noise)">
+        <input type="number" id="minUsers" value="500" title="Require at least this many unique users (filters noise)">
       </label>
       <label>Sort by
         <select id="boardSort">
@@ -320,7 +320,7 @@
 let GD = null; // global data
 let AD = null; // artist data
 let BD = null; // board data
-let activeQuadrant = '';
+let activeQuadrant = 'Q1';
 let charts = {};
 let expandedRows = new Set();
 const COLORS = ['#ffff64','#ff6384','#36a2eb','#ff9f40','#4bc0c0','#9966ff','#ff6633','#66bb6a','#ab47bc','#26c6da','#ef5350','#7e57c2','#ffa726','#42a5f5','#ec407a'];
@@ -662,7 +662,8 @@ function renderSigningBoard() {
     banner.innerHTML = '<strong>No classifications yet.</strong> Run <code style="background:rgba(0,0,0,0.3);padding:2px 6px;border-radius:3px">python classify_all.py</code> to populate the signing board.';
   } else {
     const date = new Date(d.classified_at).toLocaleDateString();
-    banner.innerHTML = `<strong>${d.total_artists}</strong> artists classified · ${d.days}-day lookback · last refreshed ${date}. Click a quadrant card to filter. Click any row to drill into an artist.`;
+    const filtNote = activeQuadrant === 'Q1' ? ' Showing <strong>Q1 Full Catalog Fanbase</strong> (small + super-engaged). These artists have tiny audiences that behave like superfans.' : '';
+    banner.innerHTML = `<strong>${d.total_artists}</strong> artists classified · ${d.days}-day lookback · refreshed ${date}.${filtNote} Click a quadrant card to filter. Click any row to drill in.`;
   }
 
   const s = d.stats || {};
