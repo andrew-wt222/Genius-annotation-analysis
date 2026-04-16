@@ -1,12 +1,10 @@
 """Build the Artist Universe index.
 
-Runs ONE Mixpanel segmentation query that aggregates song:load events by
-`Primary Artist` over the last N days. Output: artist_universe.json — the
-"who exists at what volume" lookup table that powers on-demand
-classification in the Signing Board dashboard.
+Queries Mixpanel's segmentation endpoint to aggregate song:load events by
+Primary Artist. Splits the time window into 30-day chunks to avoid
+gateway timeouts, then merges results.
 
-This is a cheap query (single aggregation, not event export) that should
-finish in a couple of minutes even for a 90-day window.
+Output: artist_universe.json — the lookup table powering the Signing Board.
 
 Usage:
     python build_universe.py                 # default: 90 days, min 50 views
@@ -17,6 +15,7 @@ Usage:
 import argparse
 import json
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -31,12 +30,11 @@ BASE_DIR = Path(__file__).parent
 UNIVERSE_FILE = BASE_DIR / "artist_universe.json"
 
 MIXPANEL_SEGMENTATION_URL = "https://mixpanel.com/api/2.0/segmentation"
+CHUNK_DAYS = 30
+MAX_RETRIES = 3
 
 
-def build_universe(days=90, min_views=50):
-    to_date = datetime.utcnow().date()
-    from_date = to_date - timedelta(days=days)
-
+def _query_chunk(from_date, to_date, attempt=0):
     params = {
         "event": "song:load",
         "from_date": from_date.isoformat(),
@@ -44,37 +42,81 @@ def build_universe(days=90, min_views=50):
         "on": 'properties["Primary Artist"]',
         "type": "general",
         "limit": 50000,
-        "unit": "day",
+        "unit": "month",
     }
 
-    logger.info("Querying Mixpanel segmentation for song:load by Primary Artist")
-    logger.info("Window: %s to %s (%d days)", from_date, to_date, days)
-    resp = requests.get(
-        MIXPANEL_SEGMENTATION_URL,
-        params=params,
-        auth=(config.MIXPANEL_API_SECRET, ""),
-        timeout=600,
-    )
+    logger.info("  Chunk %s to %s ...", from_date, to_date)
+    try:
+        resp = requests.get(
+            MIXPANEL_SEGMENTATION_URL,
+            params=params,
+            auth=(config.MIXPANEL_API_SECRET, ""),
+            timeout=300,
+        )
+    except requests.Timeout:
+        if attempt < MAX_RETRIES:
+            wait = 2 ** (attempt + 1)
+            logger.warning("  Timeout, retrying in %ds...", wait)
+            time.sleep(wait)
+            return _query_chunk(from_date, to_date, attempt + 1)
+        raise
+
+    if resp.status_code in (502, 503, 504):
+        if attempt < MAX_RETRIES:
+            wait = 2 ** (attempt + 1)
+            logger.warning("  Got %d, retrying in %ds...", resp.status_code, wait)
+            time.sleep(wait)
+            return _query_chunk(from_date, to_date, attempt + 1)
 
     if resp.status_code != 200:
-        logger.error("Mixpanel returned %d: %s", resp.status_code, resp.text[:500])
+        logger.error("  Mixpanel returned %d: %s", resp.status_code, resp.text[:500])
     resp.raise_for_status()
 
-    payload = resp.json()
-    data = payload.get("data", {})
+    data = resp.json().get("data", {})
     values = data.get("values", {})
 
-    artists = []
-    for name, per_day in values.items():
-        if not name:
+    chunk = {}
+    for name, per_period in values.items():
+        if not name or name in ("$overall", "undefined"):
             continue
-        if name in ("$overall", "undefined"):
-            continue
-        total = sum(per_day.values()) if isinstance(per_day, dict) else int(per_day or 0)
-        if total < min_views:
-            continue
-        artists.append({"artist_name": name, "views_90d": int(total)})
+        total = sum(per_period.values()) if isinstance(per_period, dict) else int(per_period or 0)
+        if total > 0:
+            chunk[name] = total
 
+    logger.info("  Got %d artists in this chunk", len(chunk))
+    return chunk
+
+
+def build_universe(days=90, min_views=50):
+    to_date = datetime.utcnow().date()
+    from_date = to_date - timedelta(days=days)
+
+    # Split into chunks
+    chunks = []
+    chunk_start = from_date
+    while chunk_start < to_date:
+        chunk_end = min(chunk_start + timedelta(days=CHUNK_DAYS), to_date)
+        chunks.append((chunk_start, chunk_end))
+        chunk_start = chunk_end + timedelta(days=1)
+
+    logger.info("Querying Mixpanel in %d chunks of %d days each (%s to %s)",
+                len(chunks), CHUNK_DAYS, from_date, to_date)
+
+    # Merge all chunks
+    totals = {}
+    for i, (cs, ce) in enumerate(chunks, 1):
+        logger.info("Chunk %d/%d:", i, len(chunks))
+        chunk = _query_chunk(cs, ce)
+        for name, count in chunk.items():
+            totals[name] = totals.get(name, 0) + count
+        time.sleep(1)
+
+    # Filter and sort
+    artists = [
+        {"artist_name": name, "views_90d": count}
+        for name, count in totals.items()
+        if count >= min_views
+    ]
     artists.sort(key=lambda x: x["views_90d"], reverse=True)
 
     out = {
@@ -90,7 +132,6 @@ def build_universe(days=90, min_views=50):
 
     logger.info("Wrote %d artists to %s", len(artists), UNIVERSE_FILE)
 
-    # Quick distribution summary
     if artists:
         buckets = [
             ("mainstream (>100K views)", sum(1 for a in artists if a["views_90d"] > 100_000)),
