@@ -138,8 +138,18 @@
     .quad-tag.q2 { background:rgba(255,167,38,0.2); color:#ffa726; border:1px solid rgba(255,167,38,0.4); }
     .quad-tag.q3 { background:rgba(66,165,245,0.2); color:#42a5f5; border:1px solid rgba(66,165,245,0.4); }
     .quad-tag.q4 { background:rgba(136,136,136,0.2); color:#888; border:1px solid rgba(136,136,136,0.4); }
+    .quad-tag.unclassified { background:rgba(136,136,136,0.15); color:#888; border:1px dashed #555; }
     .clickable-row { cursor:pointer; }
     .clickable-row:hover>td { background:var(--accent-dim); }
+    tr.unclassified-row td { opacity:0.65; }
+
+    .batch-bar { background:var(--surface); border:1px solid var(--yellow); border-radius:10px; padding:14px 20px; margin-bottom:16px; display:flex; gap:16px; align-items:center; }
+    .batch-bar .summary { flex:1; font-size:13px; color:var(--text); }
+    .batch-bar .summary b { color:var(--yellow); }
+    .batch-bar .progress-track { max-width:300px; }
+
+    .filter-bar label { min-width:0; }
+    .filter-bar input.range-input { width:100px; }
 
     @media (max-width:700px) { .detail-grid { grid-template-columns:1fr; } .search-input { width:100%; } .search-bar { flex-direction:column; align-items:stretch; } }
   </style>
@@ -192,11 +202,21 @@
     <div class="board-stats" id="boardStats"></div>
 
     <div class="filter-bar">
+      <label>Min views (90d)
+        <input type="number" class="range-input" id="minViews" value="1000" title="Exclude noise — require at least this many page views">
+      </label>
       <label>Max views (90d)
-        <input type="number" id="maxViews" value="50000" title="Hide mainstream artists above this page-view count">
+        <input type="number" class="range-input" id="maxViews" value="50000" title="Hide mainstream artists above this page-view count">
       </label>
       <label>Min users
-        <input type="number" id="minUsers" value="500" title="Require at least this many unique users (filters noise)">
+        <input type="number" class="range-input" id="minUsers" value="" placeholder="any" title="(For classified artists) minimum unique users">
+      </label>
+      <label>Show
+        <select id="boardClassified">
+          <option value="all">All candidates</option>
+          <option value="yes">Classified only</option>
+          <option value="no">Unclassified only</option>
+        </select>
       </label>
       <label>Sort by
         <select id="boardSort">
@@ -205,11 +225,17 @@
           <option value="vpu">Views Per User</option>
           <option value="spu">Songs Per User</option>
           <option value="unique_users">Unique Users</option>
-          <option value="total_page_views">Total Views</option>
+          <option value="views_90d">Views (90d)</option>
         </select>
       </label>
       <button class="btn btn-yellow" onclick="loadSigningBoard()">Apply</button>
       <button class="btn btn-outline" onclick="resetFilters()">Reset</button>
+    </div>
+
+    <div id="batchBar" class="batch-bar hidden">
+      <div class="summary" id="batchSummary"></div>
+      <div class="progress-track"><div class="progress-fill" id="batchFill" style="width:0%"></div></div>
+      <button class="btn btn-yellow" id="batchBtn" onclick="startBatchClassify()">Classify these artists</button>
     </div>
 
     <div class="panel">
@@ -320,7 +346,7 @@
 let GD = null; // global data
 let AD = null; // artist data
 let BD = null; // board data
-let activeQuadrant = 'Q1';
+let activeQuadrant = '';
 let charts = {};
 let expandedRows = new Set();
 const COLORS = ['#ffff64','#ff6384','#36a2eb','#ff9f40','#4bc0c0','#9966ff','#ff6633','#66bb6a','#ab47bc','#26c6da','#ef5350','#7e57c2','#ffa726','#42a5f5','#ec407a'];
@@ -632,8 +658,10 @@ function showView(v) {
 
 function resetFilters() {
   activeQuadrant = '';
+  document.getElementById('minViews').value = '';
   document.getElementById('maxViews').value = '';
   document.getElementById('minUsers').value = '';
+  document.getElementById('boardClassified').value = 'all';
   document.getElementById('boardSort').value = 'engagement_score';
   loadSigningBoard();
 }
@@ -641,8 +669,10 @@ function resetFilters() {
 async function loadSigningBoard() {
   const params = new URLSearchParams();
   if (activeQuadrant) params.set('quadrant', activeQuadrant);
+  const minV = document.getElementById('minViews').value; if (minV) params.set('min_views', minV);
   const mv = document.getElementById('maxViews').value; if (mv) params.set('max_views', mv);
   const mu = document.getElementById('minUsers').value; if (mu) params.set('min_users', mu);
+  const cl = document.getElementById('boardClassified').value; if (cl) params.set('classified', cl);
   params.set('sort', document.getElementById('boardSort').value);
 
   showLoading('Loading signing board...');
@@ -658,17 +688,21 @@ function renderSigningBoard() {
   const d = BD;
   const banner = document.getElementById('boardBanner');
 
-  if (!d.classified_at) {
-    banner.innerHTML = '<strong>No classifications yet.</strong> Run <code style="background:rgba(0,0,0,0.3);padding:2px 6px;border-radius:3px">python classify_all.py</code> to populate the signing board.';
+  // Banner: universe + classified status
+  const uTotal = d.universe_total || 0;
+  const cTotal = d.total_classified || 0;
+  if (!uTotal && !cTotal) {
+    banner.innerHTML = '<strong>Empty.</strong> Run <code style="background:rgba(0,0,0,0.3);padding:2px 6px;border-radius:3px">python build_universe.py</code> first to index all artists by volume, then filter and classify candidates from this page.';
+  } else if (!uTotal) {
+    banner.innerHTML = `${cTotal} artists classified. Run <code style="background:rgba(0,0,0,0.3);padding:2px 6px;border-radius:3px">python build_universe.py</code> to enable on-demand discovery.`;
   } else {
-    const date = new Date(d.classified_at).toLocaleDateString();
-    const filtNote = activeQuadrant === 'Q1' ? ' Showing <strong>Q1 Full Catalog Fanbase</strong> (small + super-engaged). These artists have tiny audiences that behave like superfans.' : '';
-    banner.innerHTML = `<strong>${d.total_artists}</strong> artists classified · ${d.days}-day lookback · refreshed ${date}.${filtNote} Click a quadrant card to filter. Click any row to drill in.`;
+    const uBuilt = new Date(d.universe_built_at).toLocaleDateString();
+    banner.innerHTML = `<strong>${uTotal.toLocaleString()}</strong> artists in universe · <strong>${cTotal.toLocaleString()}</strong> classified · universe refreshed ${uBuilt}. Filter to a candidate pool then classify on demand.`;
   }
 
   const s = d.stats || {};
   const cards = [
-    {q:'', label:'All', v:d.total_artists, sub:'everyone classified'},
+    {q:'', label:'All Classified', v:cTotal, sub:'across all quadrants'},
     {q:'Q1', label:'Q1 · Full Catalog Fanbase', v:s.Q1||0, sub:'sign'},
     {q:'Q2', label:'Q2 · Single Deep Cut', v:s.Q2||0, sub:'sync / EP'},
     {q:'Q3', label:'Q3 · Lyrics Utility', v:s.Q3||0, sub:'distribution'},
@@ -682,9 +716,25 @@ function renderSigningBoard() {
      </div>`
   ).join('');
 
+  const fc = d.filtered_count || 0;
+  const rc = d.returned_count || 0;
+  const truncNote = fc > rc ? ` (showing first ${rc})` : '';
   document.getElementById('boardTableTitle').textContent =
-    activeQuadrant ? `${activeQuadrant} Candidates (${(d.filtered_count||0).toLocaleString()})`
-                   : `Signing Candidates (${(d.filtered_count||0).toLocaleString()})`;
+    activeQuadrant ? `${activeQuadrant} Candidates: ${fc.toLocaleString()}${truncNote}`
+                   : `Matching Candidates: ${fc.toLocaleString()}${truncNote}`;
+
+  // Batch bar: if unclassified candidates match, offer to classify them
+  const unclassified = (d.artists || []).filter(a => !a.classified);
+  const bb = document.getElementById('batchBar');
+  if (unclassified.length > 0 && !activeQuadrant) {
+    bb.classList.remove('hidden');
+    document.getElementById('batchSummary').innerHTML =
+      `<b>${unclassified.length}</b> of ${d.artists.length} candidates are unclassified. Classify them to populate quadrant + engagement metrics. Est ~${Math.ceil(unclassified.length * 15 / 60)} min.`;
+    document.getElementById('batchBtn').disabled = false;
+    document.getElementById('batchBtn').textContent = `Classify ${unclassified.length} artists`;
+  } else {
+    bb.classList.add('hidden');
+  }
 
   const tb = document.getElementById('boardBody');
   if (!d.artists || !d.artists.length) {
@@ -694,26 +744,86 @@ function renderSigningBoard() {
   tb.innerHTML = '';
   d.artists.forEach((a, i) => {
     const tr = document.createElement('tr');
-    tr.className = 'clickable-row';
+    tr.className = 'clickable-row' + (a.classified ? '' : ' unclassified-row');
     tr.onclick = () => drillDown(a.artist);
-    const qcls = (a.quadrant||'').toLowerCase();
-    tr.innerHTML = `
-      <td class="rank">${i+1}</td>
-      <td>
-        <strong>${esc(a.artist)}</strong>
-        ${a.top_song ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">${esc(a.top_song)}</div>` : ''}
-      </td>
-      <td><span class="quad-tag ${qcls}">${esc(a.quadrant||'')}</span></td>
-      <td><strong style="color:var(--yellow)">${(a.engagement_score||0).toFixed(3)}</strong></td>
-      <td>${(a.vpu||0).toFixed(2)}</td>
-      <td>${(a.spu||0).toFixed(2)}</td>
-      <td>${((a.aor||0)*100).toFixed(1)}%</td>
-      <td>${(a.unique_users||0).toLocaleString()}</td>
-      <td>${(a.total_page_views||0).toLocaleString()}</td>
-      <td style="font-size:11px;max-width:240px;color:var(--text-muted)">${esc(a.deal||'')}</td>
-    `;
+    const q = a.quadrant || '';
+    const qcls = q ? q.toLowerCase() : 'unclassified';
+    const qlabel = q || '—';
+    const views = a.views_90d || a.total_page_views || 0;
+    if (a.classified) {
+      tr.innerHTML = `
+        <td class="rank">${i+1}</td>
+        <td>
+          <strong>${esc(a.artist)}</strong>
+          ${a.top_song ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">${esc(a.top_song)}</div>` : ''}
+        </td>
+        <td><span class="quad-tag ${qcls}">${esc(qlabel)}</span></td>
+        <td><strong style="color:var(--yellow)">${(a.engagement_score||0).toFixed(3)}</strong></td>
+        <td>${(a.vpu||0).toFixed(2)}</td>
+        <td>${(a.spu||0).toFixed(2)}</td>
+        <td>${((a.aor||0)*100).toFixed(1)}%</td>
+        <td>${(a.unique_users||0).toLocaleString()}</td>
+        <td>${views.toLocaleString()}</td>
+        <td style="font-size:11px;max-width:240px;color:var(--text-muted)">${esc(a.deal||'')}</td>
+      `;
+    } else {
+      tr.innerHTML = `
+        <td class="rank">${i+1}</td>
+        <td><strong>${esc(a.artist)}</strong></td>
+        <td><span class="quad-tag unclassified">Not classified</span></td>
+        <td colspan="6" style="color:var(--text-muted);font-size:12px;font-style:italic">Pending classification — ${views.toLocaleString()} views</td>
+        <td style="font-size:11px;color:var(--text-muted)">Click "Classify" above</td>
+      `;
+    }
     tb.appendChild(tr);
   });
+}
+
+// --- Batch classify ---
+async function startBatchClassify() {
+  if (!BD || !BD.artists) return;
+  const unclassified = BD.artists.filter(a => !a.classified).map(a => a.artist);
+  if (!unclassified.length) return;
+
+  document.getElementById('batchBtn').disabled = true;
+  document.getElementById('batchBtn').textContent = 'Starting...';
+
+  try {
+    const r = await fetch('/api/classify-batch', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({artists: unclassified, days: 90}),
+    });
+    const j = await r.json();
+    if (j.status === 'already_running') {
+      showError('A classification batch is already running. Wait for it to finish.');
+    } else if (j.error) {
+      showError(j.error);
+    }
+  } catch(e) { showError('Failed to start batch: ' + e.message); }
+
+  pollBatchStatus();
+}
+
+async function pollBatchStatus() {
+  try {
+    const r = await fetch('/api/classify-batch/status');
+    const s = await r.json();
+    const pct = s.total > 0 ? Math.round(s.done / s.total * 100) : 0;
+    document.getElementById('batchFill').style.width = pct + '%';
+    const summary = document.getElementById('batchSummary');
+    const btn = document.getElementById('batchBtn');
+    if (s.running) {
+      summary.innerHTML = `Classifying <b>${esc(s.current||'...')}</b> · ${s.done}/${s.total} (${pct}%) · errors: ${s.errors.length}`;
+      btn.textContent = 'Running...';
+      btn.disabled = true;
+      setTimeout(pollBatchStatus, 2000);
+    } else if (s.finished_at) {
+      summary.innerHTML = `<b>Done.</b> ${s.done}/${s.total} classified. ${s.errors.length} errors. Refreshing board...`;
+      btn.disabled = false;
+      setTimeout(() => { loadSigningBoard(); }, 500);
+    }
+  } catch(e) { setTimeout(pollBatchStatus, 3000); }
 }
 
 function setQuadrantFilter(q) {

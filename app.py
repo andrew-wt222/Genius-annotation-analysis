@@ -5,7 +5,7 @@ import logging
 import os
 import threading
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone  # noqa: F401 (timezone used)
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request
@@ -26,6 +26,7 @@ BASE_DIR = Path(__file__).parent
 MIXPANEL_CACHE = BASE_DIR / "data_cache.json"
 ENRICHED_CACHE = BASE_DIR / "enriched_cache.json"
 CLASSIFICATIONS_FILE = BASE_DIR / "classifications.json"
+UNIVERSE_FILE = BASE_DIR / "artist_universe.json"
 
 # Mixpanel JQL / Insights API for live queries
 MIXPANEL_INSIGHTS_URL = "https://mixpanel.com/api/2.0/insights"
@@ -37,6 +38,19 @@ _data = {
     "enrich_progress": 0,
     "enrich_total": 0,
 }
+
+# Batch classification state (on-demand, triggered from the dashboard)
+_batch = {
+    "running": False,
+    "total": 0,
+    "done": 0,
+    "current": None,
+    "errors": [],
+    "days": 90,
+    "started_at": None,
+    "finished_at": None,
+}
+_batch_lock = threading.Lock()
 
 
 def _load_mixpanel_cache():
@@ -395,48 +409,252 @@ def _load_signing_board():
     return {"classified_at": None, "days": None, "artists": []}
 
 
+def _load_universe():
+    if UNIVERSE_FILE.exists():
+        with open(UNIVERSE_FILE) as f:
+            return json.load(f)
+    return {"built_at": None, "days": None, "total_artists": 0, "artists": []}
+
+
+def _save_classifications(state):
+    with open(CLASSIFICATIONS_FILE, "w") as f:
+        json.dump(state, f, indent=2)
+
+
 @app.route("/api/signing-board")
 def api_signing_board():
-    """Return the cached quadrant classifications, filterable and sortable.
+    """Return artists matching the filter set.
+
+    JOINs the universe index (who exists at what volume) with the
+    classifications cache (who's been classified so far). Artists matching
+    the volume filters but not yet classified come back as pending rows
+    the user can batch-classify.
 
     Query params:
-      quadrant: Q1|Q2|Q3|Q4
-      max_views: exclude artists above this page-view count
-      min_users: exclude artists below this unique-user count
-      sort: engagement_score (default) | vpu | aor | spu | unique_users | total_page_views
+      quadrant: Q1|Q2|Q3|Q4  (only returns classified artists if set)
+      max_views: filter out artists above this 90-day page-view count
+      min_views: filter out artists below this 90-day page-view count
+      min_users: min unique-user count (only applies to classified rows)
+      classified: all|yes|no  — default all
+      sort: engagement_score (default) | vpu | aor | spu | unique_users |
+            total_page_views | views_90d
+      limit: cap the returned row count (default 200)
     """
     board = _load_signing_board()
-    all_artists = board.get("artists", [])
-    artists = list(all_artists)
+    universe = _load_universe()
+
+    classified = board.get("artists", [])
+    classified_by_name = {a["artist"]: a for a in classified}
 
     quadrant = request.args.get("quadrant", "").strip()
-    if quadrant:
-        artists = [a for a in artists if a.get("quadrant") == quadrant]
-
     max_views = request.args.get("max_views", type=int)
-    if max_views is not None:
-        artists = [a for a in artists if a.get("total_page_views", 0) <= max_views]
-
+    min_views = request.args.get("min_views", type=int)
     min_users = request.args.get("min_users", type=int)
-    if min_users is not None:
-        artists = [a for a in artists if a.get("unique_users", 0) >= min_users]
+    classified_filter = request.args.get("classified", "all").lower()
+    limit = request.args.get("limit", default=200, type=int)
+
+    rows = []
+
+    # Start from the universe so we can surface unclassified candidates.
+    universe_artists = universe.get("artists", [])
+    for u in universe_artists:
+        name = u["artist_name"]
+        views = u.get("views_90d", 0)
+
+        if max_views is not None and views > max_views:
+            continue
+        if min_views is not None and views < min_views:
+            continue
+
+        c = classified_by_name.get(name)
+        if c:
+            if quadrant and c.get("quadrant") != quadrant:
+                continue
+            if min_users is not None and c.get("unique_users", 0) < min_users:
+                continue
+            if classified_filter == "no":
+                continue
+            rows.append({**c, "views_90d": views, "classified": True})
+        else:
+            if quadrant or classified_filter == "yes":
+                continue
+            rows.append({
+                "artist": name,
+                "views_90d": views,
+                "classified": False,
+                "quadrant": None,
+                "engagement_score": 0,
+            })
+
+    # If no universe file exists yet, fall back to showing only classifications.
+    if not universe_artists:
+        for c in classified:
+            if quadrant and c.get("quadrant") != quadrant:
+                continue
+            if min_users is not None and c.get("unique_users", 0) < min_users:
+                continue
+            if max_views is not None and c.get("total_page_views", 0) > max_views:
+                continue
+            if min_views is not None and c.get("total_page_views", 0) < min_views:
+                continue
+            rows.append({**c, "views_90d": c.get("total_page_views", 0), "classified": True})
 
     sort_by = request.args.get("sort", "engagement_score")
     if sort_by not in {"engagement_score", "vpu", "aor", "spu",
-                       "unique_users", "total_page_views", "total_annotation_opens"}:
+                       "unique_users", "total_page_views",
+                       "total_annotation_opens", "views_90d"}:
         sort_by = "engagement_score"
-    artists = sorted(artists, key=lambda x: x.get(sort_by, 0) or 0, reverse=True)
 
-    stats = {q: sum(1 for a in all_artists if a.get("quadrant") == q)
+    rows.sort(key=lambda x: x.get(sort_by, 0) or 0, reverse=True)
+
+    # Quadrant count over ALL classified artists (not just filtered)
+    stats = {q: sum(1 for a in classified if a.get("quadrant") == q)
              for q in ("Q1", "Q2", "Q3", "Q4")}
+
+    truncated_count = len(rows)
+    rows = rows[:limit]
 
     return jsonify({
         "classified_at": board.get("classified_at"),
         "days": board.get("days"),
-        "total_artists": len(all_artists),
-        "filtered_count": len(artists),
+        "universe_built_at": universe.get("built_at"),
+        "universe_total": universe.get("total_artists", 0),
+        "total_classified": len(classified),
         "stats": stats,
-        "artists": artists,
+        "filtered_count": truncated_count,
+        "returned_count": len(rows),
+        "limit": limit,
+        "artists": rows,
+    })
+
+
+def _classify_artist_inline(name, days):
+    """Run the per-artist classification and append to classifications.json.
+
+    Returns the new entry on success, or None on failure.
+    """
+    try:
+        result = _aggregate_artist_data(name, days)
+    except Exception as exc:
+        logger.exception("classify %s failed: %s", name, exc)
+        return None
+
+    if result.get("error"):
+        return None
+
+    c = result["classification"]
+    songs = result.get("songs") or []
+    entry = {
+        "artist": name,
+        "quadrant": c["quadrant"],
+        "quadrant_name": c["name"],
+        "deal": c["deal"],
+        "thesis": c["thesis"],
+        "vpu": c["vpu"],
+        "spu": c["spu"],
+        "aor": c["aor"],
+        "unique_users": c["unique_users"],
+        "total_page_views": result["total_page_views"],
+        "total_annotation_opens": result["total_annotation_opens"],
+        "unique_songs": result["unique_songs"],
+        "unique_annotations": result["unique_annotations"],
+        "top_song": songs[0]["song_title"] if songs else "",
+        "engagement_score": round(c["vpu"] * c["aor"], 4),
+    }
+
+    state = _load_signing_board()
+    state["days"] = days
+    state["artists"] = [a for a in state.get("artists", []) if a.get("artist") != name]
+    state["artists"].append(entry)
+    state["classified_at"] = datetime.now(timezone.utc).isoformat()
+    _save_classifications(state)
+    return entry
+
+
+def _batch_classify_worker(artists, days):
+    with _batch_lock:
+        _batch["running"] = True
+        _batch["total"] = len(artists)
+        _batch["done"] = 0
+        _batch["current"] = None
+        _batch["errors"] = []
+        _batch["days"] = days
+        _batch["started_at"] = datetime.now(timezone.utc).isoformat()
+        _batch["finished_at"] = None
+
+    for name in artists:
+        with _batch_lock:
+            _batch["current"] = name
+
+        entry = _classify_artist_inline(name, days)
+        if entry is None:
+            _batch["errors"].append(name)
+
+        with _batch_lock:
+            _batch["done"] += 1
+
+        time.sleep(0.8)  # rate-limit
+
+    with _batch_lock:
+        _batch["running"] = False
+        _batch["current"] = None
+        _batch["finished_at"] = datetime.now(timezone.utc).isoformat()
+
+
+@app.route("/api/classify-batch", methods=["POST"])
+def api_classify_batch():
+    """Kick off background classification of a list of artists.
+
+    Body: {"artists": ["Artist1", ...], "days": 90}
+    """
+    with _batch_lock:
+        if _batch["running"]:
+            return jsonify({
+                "status": "already_running",
+                "total": _batch["total"],
+                "done": _batch["done"],
+            }), 409
+
+    body = request.get_json(silent=True) or {}
+    artists = [a for a in (body.get("artists") or []) if a]
+    days = int(body.get("days", 90))
+
+    if not artists:
+        return jsonify({"error": "artists list is required"}), 400
+    if len(artists) > 500:
+        return jsonify({"error": "max 500 artists per batch"}), 400
+
+    thread = threading.Thread(
+        target=_batch_classify_worker,
+        args=(artists, days),
+        daemon=True,
+    )
+    thread.start()
+    return jsonify({"status": "started", "total": len(artists), "days": days})
+
+
+@app.route("/api/classify-batch/status")
+def api_classify_batch_status():
+    with _batch_lock:
+        return jsonify({
+            "running": _batch["running"],
+            "total": _batch["total"],
+            "done": _batch["done"],
+            "current": _batch["current"],
+            "errors": list(_batch["errors"]),
+            "days": _batch["days"],
+            "started_at": _batch["started_at"],
+            "finished_at": _batch["finished_at"],
+        })
+
+
+@app.route("/api/universe")
+def api_universe():
+    u = _load_universe()
+    return jsonify({
+        "built_at": u.get("built_at"),
+        "days": u.get("days"),
+        "total_artists": u.get("total_artists", 0),
     })
 
 
