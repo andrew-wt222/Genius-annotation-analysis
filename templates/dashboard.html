@@ -80,6 +80,38 @@
     .progress-track { flex:1; height:6px; background:var(--surface2); border-radius:3px; overflow:hidden; }
     .progress-fill { height:100%; background:var(--yellow); border-radius:3px; transition:width 0.3s; }
 
+    /* Quadrant classification */
+    .quadrant-panel { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:22px; margin-bottom:24px; }
+    .quadrant-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; gap:16px; flex-wrap:wrap; }
+    .quadrant-title { font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px; }
+    .quadrant-name { font-size:28px; font-weight:700; color:var(--yellow); }
+    .quadrant-tag { display:inline-block; background:var(--yellow); color:#000; font-weight:700; font-size:13px; padding:4px 10px; border-radius:4px; margin-right:10px; }
+    .quadrant-metrics { display:flex; gap:18px; flex-wrap:wrap; }
+    .q-metric { background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:10px 14px; min-width:110px; }
+    .q-metric .v { font-size:22px; font-weight:700; color:var(--yellow); line-height:1.1; }
+    .q-metric .l { font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px; }
+    .quadrant-body { display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start; }
+    @media (max-width:900px) { .quadrant-body { grid-template-columns:1fr; } }
+    .quadrant-text h3 { font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px; }
+    .quadrant-text p { font-size:14px; line-height:1.55; margin-bottom:14px; color:var(--text); }
+    .quadrant-text .deal { font-size:14px; line-height:1.55; color:var(--yellow); font-weight:600; padding:10px 12px; background:var(--accent-dim); border-left:3px solid var(--yellow); border-radius:4px; }
+    .matrix { position:relative; width:100%; aspect-ratio:1/1; background:var(--surface2); border:1px solid var(--border); border-radius:8px; }
+    .matrix .cell { position:absolute; width:50%; height:50%; padding:10px; font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; }
+    .matrix .cell.q1 { top:0; left:50%; }
+    .matrix .cell.q2 { top:0; left:0; }
+    .matrix .cell.q3 { top:50%; left:50%; }
+    .matrix .cell.q4 { top:50%; left:0; }
+    .matrix .cell.active { background:var(--accent-dim); color:var(--yellow); font-weight:700; }
+    .matrix .axis-x, .matrix .axis-y { position:absolute; background:var(--border); }
+    .matrix .axis-x { left:0; right:0; top:50%; height:1px; }
+    .matrix .axis-y { top:0; bottom:0; left:50%; width:1px; }
+    .matrix .dot { position:absolute; width:14px; height:14px; border-radius:50%; background:var(--yellow); border:2px solid #000; box-shadow:0 0 0 2px var(--yellow); transform:translate(-50%,-50%); z-index:2; }
+    .matrix .lbl { position:absolute; font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; }
+    .matrix .lbl.x-low { left:10px; bottom:-22px; }
+    .matrix .lbl.x-high { right:10px; bottom:-22px; }
+    .matrix .lbl.y-low { left:-10px; bottom:10px; transform:rotate(-90deg); transform-origin:left bottom; }
+    .matrix .lbl.y-high { left:-10px; top:10px; transform:rotate(-90deg); transform-origin:left top; }
+
     @media (max-width:700px) { .detail-grid { grid-template-columns:1fr; } .search-input { width:100%; } .search-bar { flex-direction:column; align-items:stretch; } }
   </style>
 </head>
@@ -121,6 +153,45 @@
   <!-- Artist search result view -->
   <div id="artistView" class="hidden">
     <div id="artistHeader" class="info-banner"></div>
+
+    <!-- 2x2 Quadrant Classification -->
+    <div id="quadrantPanel" class="quadrant-panel hidden">
+      <div class="quadrant-header">
+        <div>
+          <div class="quadrant-title">Signing Framework Classification</div>
+          <div class="quadrant-name"><span class="quadrant-tag" id="qTag">Q1</span><span id="qName">Full Catalog Fanbase</span></div>
+        </div>
+        <div class="quadrant-metrics">
+          <div class="q-metric"><div class="v" id="qVpu">0.00</div><div class="l">Views / User (VPU)</div></div>
+          <div class="q-metric"><div class="v" id="qSpu">0.00</div><div class="l">Songs / User (SPU)</div></div>
+          <div class="q-metric"><div class="v" id="qAor">0.0%</div><div class="l">Annotation Open Rate</div></div>
+          <div class="q-metric"><div class="v" id="qUsers">0</div><div class="l">Unique Users</div></div>
+        </div>
+      </div>
+      <div class="quadrant-body">
+        <div class="quadrant-text">
+          <h3>Thesis</h3>
+          <p id="qThesis"></p>
+          <h3>Recommended Deal Structure</h3>
+          <div class="deal" id="qDeal"></div>
+        </div>
+        <div>
+          <div class="matrix" id="qMatrix">
+            <div class="axis-x"></div>
+            <div class="axis-y"></div>
+            <div class="cell q2" data-q="Q2">Q2 &middot; Single Deep Cut</div>
+            <div class="cell q1" data-q="Q1">Q1 &middot; Full Catalog Fanbase</div>
+            <div class="cell q4" data-q="Q4">Q4 &middot; One-Hit Lookup</div>
+            <div class="cell q3" data-q="Q3">Q3 &middot; Lyrics Utility</div>
+            <div class="dot" id="qDot" style="left:50%;top:50%"></div>
+            <div class="lbl x-low">Low VPU</div>
+            <div class="lbl x-high">High VPU &rarr;</div>
+            <div class="lbl y-low">Low AOR</div>
+            <div class="lbl y-high">&uarr; High AOR</div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <div class="stats-row" id="artistStats"></div>
 
@@ -212,6 +283,8 @@ function renderArtistView() {
   const d = AD;
   document.getElementById('artistHeader').innerHTML = `<strong>${esc(d.artist)}</strong> &mdash; last ${d.days} days`;
 
+  renderQuadrant(d.classification);
+
   // Stats
   document.getElementById('artistStats').innerHTML = `
     <div class="stat-card"><div class="value">${(d.total_page_views||0).toLocaleString()}</div><div class="label">Page Views</div></div>
@@ -272,6 +345,34 @@ function renderArtistView() {
 
   // Show/hide anno panel
   document.getElementById('annoPanel').style.display = (d.total_annotation_opens > 0 || (d.annotations||[]).length > 0) ? 'block' : 'none';
+}
+
+function renderQuadrant(c) {
+  const panel = document.getElementById('quadrantPanel');
+  if (!c) { panel.classList.add('hidden'); return; }
+  panel.classList.remove('hidden');
+  document.getElementById('qTag').textContent = c.quadrant;
+  document.getElementById('qName').textContent = ' ' + c.name;
+  document.getElementById('qThesis').textContent = c.thesis;
+  document.getElementById('qDeal').textContent = c.deal;
+  document.getElementById('qVpu').textContent = (c.vpu||0).toFixed(2);
+  document.getElementById('qSpu').textContent = (c.spu||0).toFixed(2);
+  document.getElementById('qAor').textContent = ((c.aor||0) * 100).toFixed(1) + '%';
+  document.getElementById('qUsers').textContent = (c.unique_users||0).toLocaleString();
+
+  // Highlight active cell
+  document.querySelectorAll('#qMatrix .cell').forEach(el => {
+    el.classList.toggle('active', el.dataset.q === c.quadrant);
+  });
+
+  // Plot the dot. Scale VPU over [0, 2*threshold] and AOR over [0, 2*threshold].
+  const vpuMax = c.vpu_threshold * 2;
+  const aorMax = c.aor_threshold * 2;
+  const xPct = Math.max(2, Math.min(98, (c.vpu / vpuMax) * 100));
+  const yPct = Math.max(2, Math.min(98, 100 - (c.aor / aorMax) * 100));
+  const dot = document.getElementById('qDot');
+  dot.style.left = xPct + '%';
+  dot.style.top = yPct + '%';
 }
 
 function renderArtistAnnotations(arr) {
@@ -343,6 +444,7 @@ function showGlobal() {
   document.getElementById('artistView').classList.add('hidden');
   document.getElementById('globalView').classList.remove('hidden');
   document.getElementById('artistInput').value='';
+  document.getElementById('quadrantPanel').classList.add('hidden');
   AD = null;
 }
 

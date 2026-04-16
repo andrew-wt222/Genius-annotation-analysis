@@ -167,6 +167,46 @@ def _query_mixpanel_artist(artist, days, event_name):
     return events
 
 
+QUADRANTS = {
+    "Q1": {
+        "name": "Full Catalog Fanbase",
+        "thesis": "Deep users + heavy annotation engagement. Fans consume catalog and read lyrics. Highest signing priority.",
+        "deal": "Full artist deal (360, catalog partnership, premium editorial).",
+    },
+    "Q2": {
+        "name": "Single Deep Cut",
+        "thesis": "Shallow users but high annotation rate. One song drives intense lyric scrutiny. Moment-driven.",
+        "deal": "Sync / single-song partnership / EP-scoped deal. Don't overpay for catalog.",
+    },
+    "Q3": {
+        "name": "Lyrics Utility",
+        "thesis": "Deep catalog browsing but low annotation intent. Users treat page as lyrics lookup, not context.",
+        "deal": "Distribution / ad-revenue deal. Monetize traffic, not editorial.",
+    },
+    "Q4": {
+        "name": "One-Hit Lookup",
+        "thesis": "Shallow traffic + no annotation engagement. Drive-by lyric searches.",
+        "deal": "Pass on artist deal. Aggregate into playlist/utility monetization.",
+    },
+}
+
+VPU_THRESHOLD = 1.8
+AOR_THRESHOLD = 0.15
+
+
+def _classify(vpu, aor):
+    """Return quadrant key (Q1-Q4) given VPU and AOR."""
+    high_vpu = vpu >= VPU_THRESHOLD
+    high_aor = aor >= AOR_THRESHOLD
+    if high_vpu and high_aor:
+        return "Q1"
+    if not high_vpu and high_aor:
+        return "Q2"
+    if high_vpu and not high_aor:
+        return "Q3"
+    return "Q4"
+
+
 def _aggregate_artist_data(artist, days):
     """Fetch page views and annotation opens for an artist, return dashboard data."""
     # Fetch page views
@@ -180,6 +220,8 @@ def _aggregate_artist_data(artist, days):
     geo_counts = {}
     referrer_counts = {}
     daily_counts = {}
+    user_songs = {}  # distinct_id -> set(song_title) for SPU
+    unique_users = set()
     total_views = len(page_views)
 
     for p in page_views:
@@ -196,6 +238,11 @@ def _aggregate_artist_data(artist, days):
         if ts:
             day = datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d")
             daily_counts[day] = daily_counts.get(day, 0) + 1
+
+        did = p.get("distinct_id")
+        if did:
+            unique_users.add(did)
+            user_songs.setdefault(did, set()).add(title)
 
     songs = sorted(
         [{"song_title": t, "open_count": c} for t, c in song_counts.items()],
@@ -236,14 +283,41 @@ def _aggregate_artist_data(artist, days):
         a["song_url"] = genius.get("song_url", "")
         a["artist_name"] = artist
 
+    # Metrics + classification
+    total_annos = len(anno_events)
+    u_count = len(unique_users)
+    vpu = (total_views / u_count) if u_count else 0.0
+    spu = (sum(len(s) for s in user_songs.values()) / u_count) if u_count else 0.0
+    aor = (total_annos / total_views) if total_views else 0.0
+
+    quad_key = _classify(vpu, aor)
+    quad = QUADRANTS[quad_key]
+    classification = {
+        "quadrant": quad_key,
+        "name": quad["name"],
+        "thesis": quad["thesis"],
+        "deal": quad["deal"],
+        "vpu": round(vpu, 3),
+        "spu": round(spu, 3),
+        "aor": round(aor, 3),
+        "unique_users": u_count,
+        "vpu_threshold": VPU_THRESHOLD,
+        "aor_threshold": AOR_THRESHOLD,
+    }
+
     return {
         "error": None,
         "artist": artist,
         "days": days,
         "total_page_views": total_views,
-        "total_annotation_opens": len(anno_events),
+        "total_annotation_opens": total_annos,
+        "unique_users": u_count,
         "unique_songs": len(songs),
         "unique_annotations": len(annotations),
+        "vpu": round(vpu, 3),
+        "spu": round(spu, 3),
+        "aor": round(aor, 3),
+        "classification": classification,
         "songs": songs,
         "annotations": annotations[:100],
         "geos": geos,
@@ -310,6 +384,38 @@ def api_enrich_status():
         "progress": _data["enrich_progress"],
         "total": _data["enrich_total"],
         "enriched_count": len(_data["enriched"]),
+    })
+
+
+@app.route("/api/classify")
+def api_classify():
+    """Classify an artist by VPU and AOR into one of the four quadrants."""
+    try:
+        vpu = float(request.args.get("vpu", ""))
+        aor = float(request.args.get("aor", ""))
+    except (TypeError, ValueError):
+        return jsonify({"error": "vpu and aor query params (floats) are required"}), 400
+
+    key = _classify(vpu, aor)
+    quad = QUADRANTS[key]
+    return jsonify({
+        "quadrant": key,
+        "name": quad["name"],
+        "thesis": quad["thesis"],
+        "deal": quad["deal"],
+        "vpu": vpu,
+        "aor": aor,
+        "vpu_threshold": VPU_THRESHOLD,
+        "aor_threshold": AOR_THRESHOLD,
+    })
+
+
+@app.route("/api/quadrants")
+def api_quadrants():
+    """Return the quadrant definitions and thresholds."""
+    return jsonify({
+        "thresholds": {"vpu": VPU_THRESHOLD, "aor": AOR_THRESHOLD},
+        "quadrants": QUADRANTS,
     })
 
 
