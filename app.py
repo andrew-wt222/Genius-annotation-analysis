@@ -25,6 +25,7 @@ app = Flask(__name__)
 BASE_DIR = Path(__file__).parent
 MIXPANEL_CACHE = BASE_DIR / "data_cache.json"
 ENRICHED_CACHE = BASE_DIR / "enriched_cache.json"
+CLASSIFICATIONS_FILE = BASE_DIR / "classifications.json"
 
 # Mixpanel JQL / Insights API for live queries
 MIXPANEL_INSIGHTS_URL = "https://mixpanel.com/api/2.0/insights"
@@ -384,6 +385,58 @@ def api_enrich_status():
         "progress": _data["enrich_progress"],
         "total": _data["enrich_total"],
         "enriched_count": len(_data["enriched"]),
+    })
+
+
+def _load_signing_board():
+    if CLASSIFICATIONS_FILE.exists():
+        with open(CLASSIFICATIONS_FILE) as f:
+            return json.load(f)
+    return {"classified_at": None, "days": None, "artists": []}
+
+
+@app.route("/api/signing-board")
+def api_signing_board():
+    """Return the cached quadrant classifications, filterable and sortable.
+
+    Query params:
+      quadrant: Q1|Q2|Q3|Q4
+      max_views: exclude artists above this page-view count
+      min_users: exclude artists below this unique-user count
+      sort: engagement_score (default) | vpu | aor | spu | unique_users | total_page_views
+    """
+    board = _load_signing_board()
+    all_artists = board.get("artists", [])
+    artists = list(all_artists)
+
+    quadrant = request.args.get("quadrant", "").strip()
+    if quadrant:
+        artists = [a for a in artists if a.get("quadrant") == quadrant]
+
+    max_views = request.args.get("max_views", type=int)
+    if max_views is not None:
+        artists = [a for a in artists if a.get("total_page_views", 0) <= max_views]
+
+    min_users = request.args.get("min_users", type=int)
+    if min_users is not None:
+        artists = [a for a in artists if a.get("unique_users", 0) >= min_users]
+
+    sort_by = request.args.get("sort", "engagement_score")
+    if sort_by not in {"engagement_score", "vpu", "aor", "spu",
+                       "unique_users", "total_page_views", "total_annotation_opens"}:
+        sort_by = "engagement_score"
+    artists = sorted(artists, key=lambda x: x.get(sort_by, 0) or 0, reverse=True)
+
+    stats = {q: sum(1 for a in all_artists if a.get("quadrant") == q)
+             for q in ("Q1", "Q2", "Q3", "Q4")}
+
+    return jsonify({
+        "classified_at": board.get("classified_at"),
+        "days": board.get("days"),
+        "total_artists": len(all_artists),
+        "filtered_count": len(artists),
+        "stats": stats,
+        "artists": artists,
     })
 
 

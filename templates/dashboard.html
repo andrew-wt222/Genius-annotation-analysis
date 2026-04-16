@@ -112,6 +112,35 @@
     .matrix .lbl.y-low { left:-10px; bottom:10px; transform:rotate(-90deg); transform-origin:left bottom; }
     .matrix .lbl.y-high { left:-10px; top:10px; transform:rotate(-90deg); transform-origin:left top; }
 
+    /* Tab bar */
+    .tab-bar { display:flex; gap:6px; margin-bottom:20px; border-bottom:1px solid var(--border); }
+    .tab { background:transparent; border:none; color:var(--text-muted); padding:12px 20px; font-size:14px; font-weight:600; cursor:pointer; border-bottom:2px solid transparent; }
+    .tab:hover { color:var(--text); }
+    .tab.active { color:var(--yellow); border-bottom-color:var(--yellow); }
+
+    /* Signing Board */
+    .board-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:20px; }
+    .board-stat { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:14px 18px; cursor:pointer; transition:all 0.15s; }
+    .board-stat:hover { border-color:var(--yellow); }
+    .board-stat.active { border-color:var(--yellow); background:var(--accent-dim); }
+    .board-stat .v { font-size:28px; font-weight:700; color:var(--yellow); line-height:1.1; }
+    .board-stat .l { font-size:11px; color:var(--text-muted); margin-top:4px; text-transform:uppercase; letter-spacing:0.4px; }
+    .board-stat .sub { font-size:10px; color:var(--text-muted); margin-top:2px; }
+
+    .filter-bar { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:14px 18px; margin-bottom:20px; display:flex; gap:14px; flex-wrap:wrap; align-items:center; }
+    .filter-bar label { font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:8px; }
+    .filter-bar input, .filter-bar select { background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:7px 10px; color:var(--text); font-size:13px; }
+    .filter-bar input:focus, .filter-bar select:focus { outline:none; border-color:var(--yellow); }
+    .filter-bar input[type=number] { width:120px; }
+
+    .quad-tag { display:inline-block; padding:3px 9px; border-radius:4px; font-size:11px; font-weight:700; letter-spacing:0.3px; }
+    .quad-tag.q1 { background:rgba(102,187,106,0.2); color:#66bb6a; border:1px solid rgba(102,187,106,0.4); }
+    .quad-tag.q2 { background:rgba(255,167,38,0.2); color:#ffa726; border:1px solid rgba(255,167,38,0.4); }
+    .quad-tag.q3 { background:rgba(66,165,245,0.2); color:#42a5f5; border:1px solid rgba(66,165,245,0.4); }
+    .quad-tag.q4 { background:rgba(136,136,136,0.2); color:#888; border:1px solid rgba(136,136,136,0.4); }
+    .clickable-row { cursor:pointer; }
+    .clickable-row:hover>td { background:var(--accent-dim); }
+
     @media (max-width:700px) { .detail-grid { grid-template-columns:1fr; } .search-input { width:100%; } .search-bar { flex-direction:column; align-items:stretch; } }
   </style>
 </head>
@@ -148,6 +177,52 @@
     <span style="font-size:13px;color:var(--text-muted)" id="enrichText">Fetching lyrics...</span>
     <div class="progress-track"><div class="progress-fill" id="enrichFill" style="width:0%"></div></div>
     <span style="font-size:13px;color:var(--text-muted)" id="enrichCount">0/0</span>
+  </div>
+
+  <!-- Tab bar -->
+  <div class="tab-bar">
+    <button class="tab active" id="tabBoard" onclick="showView('board')">Signing Board</button>
+    <button class="tab" id="tabGlobal" onclick="showView('global')">Global Top</button>
+    <button class="tab hidden" id="tabArtist" onclick="showView('artist')">Artist Detail</button>
+  </div>
+
+  <!-- Signing Board view -->
+  <div id="boardView">
+    <div id="boardBanner" class="info-banner"></div>
+    <div class="board-stats" id="boardStats"></div>
+
+    <div class="filter-bar">
+      <label>Max views (90d)
+        <input type="number" id="maxViews" placeholder="e.g. 100000" title="Hide mainstream artists above this page-view count">
+      </label>
+      <label>Min users
+        <input type="number" id="minUsers" placeholder="e.g. 500" title="Require at least this many unique users (filters noise)">
+      </label>
+      <label>Sort by
+        <select id="boardSort">
+          <option value="engagement_score">Engagement Score (VPU × AOR)</option>
+          <option value="aor">Annotation Open Rate</option>
+          <option value="vpu">Views Per User</option>
+          <option value="spu">Songs Per User</option>
+          <option value="unique_users">Unique Users</option>
+          <option value="total_page_views">Total Views</option>
+        </select>
+      </label>
+      <button class="btn btn-yellow" onclick="loadSigningBoard()">Apply</button>
+      <button class="btn btn-outline" onclick="resetFilters()">Reset</button>
+    </div>
+
+    <div class="panel">
+      <h2 id="boardTableTitle">Signing Candidates</h2>
+      <table>
+        <thead><tr>
+          <th>#</th><th>Artist</th><th>Quadrant</th><th>Engagement</th>
+          <th>VPU</th><th>SPU</th><th>AOR</th><th>Users</th><th>Views</th>
+          <th>Recommended Deal</th>
+        </tr></thead>
+        <tbody id="boardBody"></tbody>
+      </table>
+    </div>
   </div>
 
   <!-- Artist search result view -->
@@ -220,7 +295,7 @@
   </div>
 
   <!-- Global view -->
-  <div id="globalView">
+  <div id="globalView" class="hidden">
     <div class="stats-row" id="globalStats"></div>
     <div class="grid-2">
       <div class="panel"><h2>Top Artists by Annotation Opens</h2><canvas id="globalArtistChart"></canvas></div>
@@ -244,6 +319,8 @@
 <script>
 let GD = null; // global data
 let AD = null; // artist data
+let BD = null; // board data
+let activeQuadrant = '';
 let charts = {};
 let expandedRows = new Set();
 const COLORS = ['#ffff64','#ff6384','#36a2eb','#ff9f40','#4bc0c0','#9966ff','#ff6633','#66bb6a','#ab47bc','#26c6da','#ef5350','#7e57c2','#ffa726','#42a5f5','#ec407a'];
@@ -272,8 +349,7 @@ async function doSearch() {
     AD = await r.json();
     if (AD.error) { showError(AD.error); hideLoading(); return; }
     hideError();
-    document.getElementById('globalView').classList.add('hidden');
-    document.getElementById('artistView').classList.remove('hidden');
+    showView('artist');
     renderArtistView();
   } catch(e) { showError('Search failed: '+e.message); }
   hideLoading();
@@ -441,8 +517,7 @@ async function pollEnrich(reloadArtist) {
 
 // --- Global View ---
 function showGlobal() {
-  document.getElementById('artistView').classList.add('hidden');
-  document.getElementById('globalView').classList.remove('hidden');
+  showView('global');
   document.getElementById('artistInput').value='';
   document.getElementById('quadrantPanel').classList.add('hidden');
   AD = null;
@@ -541,8 +616,119 @@ async function toggleGlobalAnno(aid) {
   renderGlobalAnnotations(GD.annotations||[]);
 }
 
+// --- Signing Board ---
+function showView(v) {
+  document.getElementById('boardView').classList.toggle('hidden', v !== 'board');
+  document.getElementById('globalView').classList.toggle('hidden', v !== 'global');
+  document.getElementById('artistView').classList.toggle('hidden', v !== 'artist');
+  document.getElementById('tabBoard').classList.toggle('active', v === 'board');
+  document.getElementById('tabGlobal').classList.toggle('active', v === 'global');
+  document.getElementById('tabArtist').classList.toggle('active', v === 'artist');
+  document.getElementById('tabArtist').classList.toggle('hidden', v !== 'artist');
+  hideError();
+  if (v === 'board' && !BD) loadSigningBoard();
+  if (v === 'global' && !GD) loadGlobal();
+}
+
+function resetFilters() {
+  activeQuadrant = '';
+  document.getElementById('maxViews').value = '';
+  document.getElementById('minUsers').value = '';
+  document.getElementById('boardSort').value = 'engagement_score';
+  loadSigningBoard();
+}
+
+async function loadSigningBoard() {
+  const params = new URLSearchParams();
+  if (activeQuadrant) params.set('quadrant', activeQuadrant);
+  const mv = document.getElementById('maxViews').value; if (mv) params.set('max_views', mv);
+  const mu = document.getElementById('minUsers').value; if (mu) params.set('min_users', mu);
+  params.set('sort', document.getElementById('boardSort').value);
+
+  showLoading('Loading signing board...');
+  try {
+    const r = await fetch('/api/signing-board?' + params);
+    BD = await r.json();
+    renderSigningBoard();
+  } catch(e) { showError('Failed to load board: ' + e.message); }
+  hideLoading();
+}
+
+function renderSigningBoard() {
+  const d = BD;
+  const banner = document.getElementById('boardBanner');
+
+  if (!d.classified_at) {
+    banner.innerHTML = '<strong>No classifications yet.</strong> Run <code style="background:rgba(0,0,0,0.3);padding:2px 6px;border-radius:3px">python classify_all.py</code> to populate the signing board.';
+  } else {
+    const date = new Date(d.classified_at).toLocaleDateString();
+    banner.innerHTML = `<strong>${d.total_artists}</strong> artists classified · ${d.days}-day lookback · last refreshed ${date}. Click a quadrant card to filter. Click any row to drill into an artist.`;
+  }
+
+  const s = d.stats || {};
+  const cards = [
+    {q:'', label:'All', v:d.total_artists, sub:'everyone classified'},
+    {q:'Q1', label:'Q1 · Full Catalog Fanbase', v:s.Q1||0, sub:'sign'},
+    {q:'Q2', label:'Q2 · Single Deep Cut', v:s.Q2||0, sub:'sync / EP'},
+    {q:'Q3', label:'Q3 · Lyrics Utility', v:s.Q3||0, sub:'distribution'},
+    {q:'Q4', label:'Q4 · One-Hit Lookup', v:s.Q4||0, sub:'pass'},
+  ];
+  document.getElementById('boardStats').innerHTML = cards.map(c =>
+    `<div class="board-stat ${activeQuadrant===c.q?'active':''}" onclick="setQuadrantFilter('${c.q}')">
+       <div class="v">${c.v.toLocaleString()}</div>
+       <div class="l">${c.label}</div>
+       <div class="sub">${c.sub}</div>
+     </div>`
+  ).join('');
+
+  document.getElementById('boardTableTitle').textContent =
+    activeQuadrant ? `${activeQuadrant} Candidates (${(d.filtered_count||0).toLocaleString()})`
+                   : `Signing Candidates (${(d.filtered_count||0).toLocaleString()})`;
+
+  const tb = document.getElementById('boardBody');
+  if (!d.artists || !d.artists.length) {
+    tb.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text-muted);padding:24px">No artists match these filters.</td></tr>';
+    return;
+  }
+  tb.innerHTML = '';
+  d.artists.forEach((a, i) => {
+    const tr = document.createElement('tr');
+    tr.className = 'clickable-row';
+    tr.onclick = () => drillDown(a.artist);
+    const qcls = (a.quadrant||'').toLowerCase();
+    tr.innerHTML = `
+      <td class="rank">${i+1}</td>
+      <td>
+        <strong>${esc(a.artist)}</strong>
+        ${a.top_song ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">${esc(a.top_song)}</div>` : ''}
+      </td>
+      <td><span class="quad-tag ${qcls}">${esc(a.quadrant||'')}</span></td>
+      <td><strong style="color:var(--yellow)">${(a.engagement_score||0).toFixed(3)}</strong></td>
+      <td>${(a.vpu||0).toFixed(2)}</td>
+      <td>${(a.spu||0).toFixed(2)}</td>
+      <td>${((a.aor||0)*100).toFixed(1)}%</td>
+      <td>${(a.unique_users||0).toLocaleString()}</td>
+      <td>${(a.total_page_views||0).toLocaleString()}</td>
+      <td style="font-size:11px;max-width:240px;color:var(--text-muted)">${esc(a.deal||'')}</td>
+    `;
+    tb.appendChild(tr);
+  });
+}
+
+function setQuadrantFilter(q) {
+  activeQuadrant = q;
+  loadSigningBoard();
+}
+
+function drillDown(artist) {
+  document.getElementById('artistInput').value = artist;
+  document.getElementById('timeSelect').value = '90';
+  showView('artist');
+  doSearch();
+}
+
 // Boot
-loadGlobal();
+showView('board');
 </script>
 </body>
 </html>
