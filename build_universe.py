@@ -61,6 +61,13 @@ def _query_chunk(from_date, to_date, attempt=0):
             return _query_chunk(from_date, to_date, attempt + 1)
         raise
 
+    if resp.status_code == 429:
+        wait = 30 * (attempt + 1)
+        logger.warning("  Rate limited (429). Waiting %ds...", wait)
+        time.sleep(wait)
+        if attempt < MAX_RETRIES + 2:
+            return _query_chunk(from_date, to_date, attempt + 1)
+
     if resp.status_code in (502, 503, 504):
         if attempt < MAX_RETRIES:
             wait = 2 ** (attempt + 1)
@@ -87,11 +94,25 @@ def _query_chunk(from_date, to_date, attempt=0):
     return chunk
 
 
+CHECKPOINT = BASE_DIR / "universe_checkpoint.json"
+
+
+def _load_checkpoint():
+    if CHECKPOINT.exists():
+        with open(CHECKPOINT) as f:
+            return json.load(f)
+    return {"done": [], "totals": {}}
+
+
+def _save_checkpoint(state):
+    with open(CHECKPOINT, "w") as f:
+        json.dump(state, f)
+
+
 def build_universe(days=90, min_views=50):
     to_date = datetime.utcnow().date()
     from_date = to_date - timedelta(days=days)
 
-    # Split into chunks
     chunks = []
     chunk_start = from_date
     while chunk_start < to_date:
@@ -102,14 +123,28 @@ def build_universe(days=90, min_views=50):
     logger.info("Querying Mixpanel in %d chunks of %d days each (%s to %s)",
                 len(chunks), CHUNK_DAYS, from_date, to_date)
 
-    # Merge all chunks
-    totals = {}
+    state = _load_checkpoint()
+    done_set = set(state["done"])
+    totals = state["totals"]
+
+    if totals:
+        logger.info("Resuming from checkpoint (%d chunks done, %d artists so far)",
+                    len(done_set), len(totals))
+
     for i, (cs, ce) in enumerate(chunks, 1):
+        tag = f"{cs}_{ce}"
+        if tag in done_set:
+            logger.info("Chunk %d/%d: %s..%s (cached, skip)", i, len(chunks), cs, ce)
+            continue
         logger.info("Chunk %d/%d:", i, len(chunks))
         chunk = _query_chunk(cs, ce)
         for name, count in chunk.items():
             totals[name] = totals.get(name, 0) + count
-        time.sleep(1)
+        done_set.add(tag)
+        state["done"] = list(done_set)
+        state["totals"] = totals
+        _save_checkpoint(state)
+        time.sleep(5)
 
     # Filter and sort
     artists = [
@@ -131,6 +166,10 @@ def build_universe(days=90, min_views=50):
         json.dump(out, f, indent=2)
 
     logger.info("Wrote %d artists to %s", len(artists), UNIVERSE_FILE)
+
+    if CHECKPOINT.exists():
+        CHECKPOINT.unlink()
+        logger.info("Cleared checkpoint")
 
     if artists:
         buckets = [
